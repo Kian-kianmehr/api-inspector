@@ -117,3 +117,22 @@ body{background:#0b1220;color:#e5ecf8}
 .profile-menu-avatar{background:#24385c;color:#b3c9ff}
 .profile-status{border-color:#293b55;color:#9aa9bf}
 @media(prefers-reduced-motion:no-preference){.sidebar,.primary,.profile-menu{transition:background-color .2s,border-color .2s,color .2s,transform .2s}}
+
+
+/* Darker, lower-contrast surfaces */
+:root{background:#070c16;--line:#1a273a}
+body,.shell,.main,.loading{background:#070c16}
+.auth,.auth-main{background:#080e19}
+.sidebar{background:#090f1b;border-color:#1a273a}
+.topbar{background:#0a111def;border-color:#1a273a}
+.workspace,.input,.top-search,.toolbar>div{background:#0d1726;border-color:#1e2d43}
+.stat,.panel,.big-empty,.profile-menu,.account-menu{background:#0d1726;border-color:#1e2d43}
+.tip{background:linear-gradient(145deg,#101b2d,#0d1726);border-color:#20314b}
+.step,.detail,.account{border-color:#1c2a3e}
+.progress{background:#1d2a3d}
+.hero{background:linear-gradient(110deg,#101d33,#17294a 58%,#203763)}
+.auth-side{background:radial-gradient(ellipse at 78% 20%,#1b3156,transparent 38%),linear-gradient(145deg,#0b1422,#14223a)}
+.code-window{background:#080f1b;border-color:#263852}
+.success{background:#0d1726;border-color:#1e2d43}
+.profile-status{border-color:#1e2d43}
+.app-footer{border-color:#1a273a}

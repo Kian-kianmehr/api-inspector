@@ -31,16 +31,14 @@ TEST_EMAIL_SETTINGS = {
 # ============================================================
 # Registration Tests
 # ============================================================
-
-# Tests account creation, password hashing, email uniqueness,
-# and password confirmation during registration.
-
 @override_settings(**TEST_EMAIL_SETTINGS)
 class RegisterTests(TestCase):
 
     def setUp(self):
-        self.client = APIClient()
+        # Clear throttle records from previous tests.
+        cache.clear()
 
+        self.client = APIClient()
         self.register_url = BASE_URL + "register/"
 
         self.valid_data = {

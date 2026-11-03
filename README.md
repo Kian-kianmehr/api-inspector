@@ -1,6 +1,6 @@
 # API Inspector
 
-API Inspector is an open-source project for inspecting APIs and identifying differences between an API's documented contract and its actual behavior.
+API Inspector is a project for inspecting APIs and identifying differences between an API's documented contract and its actual behavior.
 
 > **Current status:** Backend foundation and account authentication are implemented. The OpenAPI import and inspection workflows are planned; they are not implemented yet.
 

@@ -1,29 +1,79 @@
 # API Inspector
 
-API Inspector is a project for inspecting APIs and identifying differences between an API's documented contract and its actual behavior.
+API Inspector is a developer-focused platform for understanding API contracts and, eventually, comparing documented specifications with real API behavior.
 
-> **Current status:** Backend foundation and account authentication are implemented. The OpenAPI import and inspection workflows are planned; they are not implemented yet.
+The project contains a Django REST API backend and a React-based web frontend. The current implementation focuses on account management, authentication, and the frontend workspace foundation. OpenAPI import and live API inspection are planned next steps and are not implemented yet.
+
+## Project Overview
+
+API Inspector is split into two applications:
+
+- **Backend:** A Django REST Framework API that handles user accounts, authentication, and account security.
+- **Frontend:** A React single-page application that provides the user interface for authentication and the API Inspector workspace.
+
+The frontend interface was developed with assistance from AI tools. AI was used as a development aid for implementation and UI work; the code is included in the repository and can be reviewed, tested, and maintained like the backend.
 
 ## Current Features
+
+### Backend
 
 - Custom user model with email-based authentication
 - User registration with email verification
 - JWT access and refresh tokens
-- Logout and refresh-token blacklisting
+- Refresh-token rotation and blacklisting
+- Logout
 - User profile endpoint
-- Change-password and password-reset flows
+- Change-password flow
+- Password-reset flow
 - Rate limiting for public authentication endpoints
 - Automated tests for account and authentication behavior
 
-## Tech Stack
+### Frontend
 
-- Python 3.14+
-- Django 6.1
-- Django REST Framework
-- Django REST Framework Simple JWT
-- SQLite for local development
+- React single-page application built with Vite and TypeScript
+- Registration, login, and logout flows
+- Email verification and password recovery screens
+- Protected application workspace
+- Account settings and password change
+- Responsive dashboard layout with Specifications and Inspections sections
+- API request handling with JWT authentication and access-token refresh
+- Tailwind CSS tooling and Lucide icons
+
+> **Development status:** The workspace UI is in place, but specification import, endpoint discovery, and contract-vs-response inspection are not functional yet. Those are planned product features.
+
+## Technology Stack
+
+| Area | Technologies |
+| --- | --- |
+| Backend | Python, Django 6.1, Django REST Framework |
+| Authentication | Simple JWT |
+| Frontend | React 18, TypeScript, Vite |
+| Routing | React Router |
+| Styling and icons | Tailwind CSS, Lucide React |
+| Database | SQLite (local development) |
+| Configuration | python-dotenv |
+
+## Project Structure
+
+```text
+api-inspector/
+├── accounts/              # User model, authentication, serializers, views, tests
+├── config/                # Django settings and URL configuration
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx        # Application routes, pages, and UI
+│   │   └── styles.css     # Application styles
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── .env.example
+├── .env.example           # Backend environment template
+├── manage.py
+└── requirements.txt
+```
 
 ## Getting Started
+
+Run the backend and frontend in separate terminals.
 
 ### 1. Clone the repository
 
@@ -32,46 +82,38 @@ git clone https://github.com/Kian-kianmehr/api-inspector.git
 cd api-inspector
 ```
 
-### 2. Create and activate a virtual environment
+### 2. Set up the backend
 
-Linux / macOS:
+**Requirements:** Python 3.14+ (as currently specified by the project).
+
+Create and activate a virtual environment:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-Windows PowerShell:
+On Windows PowerShell:
 
 ```powershell
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
-### 3. Install dependencies
+Install dependencies:
 
 ```bash
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 4. Configure environment variables
-
-Copy the example file:
-
-Linux / macOS:
+Create the backend environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-Windows PowerShell:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Open `.env` and set your own Django secret key and email credentials. Never commit the real `.env` file or share its secrets.
+Set your own `DJANGO_SECRET_KEY`, `EMAIL_HOST_USER`, and `EMAIL_HOST_PASSWORD` values in `.env`. Never commit the real `.env` file or share its secrets.
 
 Generate a Django secret key with:
 
@@ -79,28 +121,48 @@ Generate a Django secret key with:
 python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 ```
 
-For Gmail SMTP, use a Google App Password. Do not use your normal Google account password.
-
-### 5. Apply database migrations
+Apply migrations and start Django on port **8008**:
 
 ```bash
 python manage.py migrate
+python manage.py runserver 127.0.0.1:8008
 ```
 
-### 6. Run the development server
+The frontend's Vite development proxy is configured to forward `/api` requests to `http://127.0.0.1:8008`.
+
+### 3. Set up the frontend
+
+**Requirements:** Node.js and npm.
+
+Open a second terminal from the repository root:
 
 ```bash
-python manage.py runserver
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
 ```
 
-The API will be available at `http://127.0.0.1:8000/api/accounts/`.
+Vite runs at:
+
+```text
+http://127.0.0.1:5173
+```
+
+The frontend uses `VITE_API_BASE_URL=/api` by default. The Vite proxy forwards those requests to the Django backend.
+
+To create a production build:
+
+```bash
+npm run build
+```
 
 ## Account API
 
-All endpoints use the `/api/accounts/` prefix.
+All account endpoints use the `/api/accounts/` prefix.
 
 | Method | Endpoint | Authentication | Purpose |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | POST | `register/` | Public | Create an account and send a verification email |
 | POST | `verify-email/` | Public | Verify an email using the UID and token |
 | POST | `resend-verification/` | Public | Request another verification email |
@@ -112,41 +174,17 @@ All endpoints use the `/api/accounts/` prefix.
 | POST | `password-reset/` | Public | Request a password reset email |
 | POST | `password-reset/confirm/` | Public | Set a new password using the reset UID and token |
 
-### Authentication
-
 For protected endpoints, send the access token in the request header:
 
 ```http
 Authorization: Bearer <access_token>
 ```
 
-### Registration example
-
-```json
-{
-  "email": "user@example.com",
-  "display_name": "Example User",
-  "password": "Use-A-Strong-Password-Here",
-  "confirm_password": "Use-A-Strong-Password-Here"
-}
-```
-
 Newly registered accounts remain inactive until their email address is verified.
-
-### Login example
-
-```json
-{
-  "email": "user@example.com",
-  "password": "your-password"
-}
-```
-
-The login endpoint returns JWT tokens. Use the access token for authenticated API requests and the refresh token to obtain a new access token.
 
 ## Running Tests
 
-Run the complete test suite:
+Run the backend test suite:
 
 ```bash
 python manage.py test accounts
@@ -158,17 +196,36 @@ Run Django's system checks:
 python manage.py check
 ```
 
+Build the frontend and run its TypeScript checks:
+
+```bash
+cd frontend
+npm run build
+```
+
 ## Environment Variables
 
-See [\.env.example](.env.example) for the complete list of required and optional settings.
+- Backend: see [`.env.example`](.env.example).
+- Frontend: see [`frontend/.env.example`](frontend/.env.example).
+
+Keep real secrets in local environment files and never commit them.
 
 ## Security Notes
 
-- Keep `.env` out of version control.
+- Keep `.env` files out of version control.
 - Use a unique, randomly generated `DJANGO_SECRET_KEY`.
 - Use an app-specific SMTP password for Gmail.
-- Set `DJANGO_DEBUG=False` and configure `DJANGO_ALLOWED_HOSTS` appropriately before deployment.
-- The current SQLite configuration is intended for local development. Choose and configure a production database before deployment.
+- Set `DJANGO_DEBUG=False` and configure `DJANGO_ALLOWED_HOSTS` before deployment.
+- The current SQLite configuration is intended for local development. Configure a production database before deployment.
+- The frontend stores authentication tokens in session storage; use HTTPS in production.
+
+## Roadmap
+
+- [ ] OpenAPI 3.0 and 3.1 specification import
+- [ ] Endpoint and schema discovery
+- [ ] API response inspection
+- [ ] Contract-versus-response comparison
+- [ ] Inspection history and issue reporting
 
 ## Contributing
 

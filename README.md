@@ -24,7 +24,7 @@ The two repositories are parts of the same API Inspector product, with separate 
 
 > **Integration status:** The AI repository is in early development. Its initial API context data models are in place, but the AI service, validation layer, and integration with this Django application have not been implemented yet.
 
-See the [API Inspector AI README](https://github.com/Kian-kianmehr/api-inspector-ai#readme) for its current implementation and roadmap.
+See the [API Inspector AI README](https://github.com/Kian-kianmehr/api-inspector-ai#readme) for its current implementation details.
 
 ## Current Features
 
@@ -202,14 +202,6 @@ Keep real secrets in local environment files and never commit them.
 - The current SQLite configuration is intended for local development. Configure a production database before deployment.
 - The frontend stores authentication tokens in session storage; use HTTPS in production.
 
-## Roadmap
-
-- [ ] OpenAPI 3.0 and 3.1 specification import
-- [ ] Endpoint and schema discovery
-- [ ] API response inspection
-- [ ] Contract-versus-response comparison
-- [ ] Inspection history and issue reporting
-- [ ] Integration with the [API Inspector AI service](https://github.com/Kian-kianmehr/api-inspector-ai)
 
 ## Contributing
 

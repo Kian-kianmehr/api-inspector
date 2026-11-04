@@ -177,3 +177,11 @@ body,.shell,.main,.loading{background:#070c16}
 @keyframes application-spin{to{transform:rotate(360deg)}}
 @media(max-width:1000px){.applications-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.applications-grid{grid-template-columns:1fr}.applications-toolbar{gap:10px}.applications-search{width:100%}.application-modal{padding:18px}.applications-empty{min-height:290px}}
+
+
+/* Application actions */
+.application-card-actions{display:flex;align-items:center;gap:10px}
+.application-delete{width:29px;height:29px;display:grid;place-items:center;border:1px solid transparent;border-radius:7px;background:transparent;color:#8294b0;cursor:pointer;transition:background .2s,border-color .2s,color .2s}
+.application-delete:hover:not(:disabled){border-color:#633746;background:#321d2a;color:#ff9eae}
+.application-delete:disabled{opacity:.55;cursor:wait}
+.delete-spinner{width:13px;height:13px;border:2px solid #34445d;border-top-color:#ff9eae;border-radius:50%;animation:application-spin .7s linear infinite}

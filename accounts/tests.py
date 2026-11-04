@@ -345,6 +345,7 @@ class MeViewTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["email"], self.user.email)
         self.assertEqual(response.data["display_name"], "Test User")
+        self.assertTrue(response.data["is_active"])
 
     def test_unauthenticated_user_cannot_view_profile(self):
         response = self.client.get(self.me_url)

@@ -85,12 +85,403 @@ function Success({title,text}:{title:string;text:string}){return <div className=
 function Forgot(){const[email,setEmail]=useState(''),[done,setDone]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false);const submit=async(e:FormEvent)=>{e.preventDefault();setBusy(true);try{await request('/accounts/password-reset/',{method:'POST',auth:false,body:JSON.stringify({email})});setDone(true)}catch(x){setError((x as Error).message)}finally{setBusy(false)}};return <AuthLayout eyebrow="ACCOUNT RECOVERY" title="Forgot your password?" subtitle="Enter your email and we’ll send you a reset link.">{done?<Success title="Check your inbox" text={'If an active account exists for '+email+', a reset link is on its way.'}/>:<form onSubmit={submit}><Field label="Email address" name="email" type="email" placeholder="you@company.com" required value={email} onChange={e=>setEmail(e.target.value)}/><ErrorMsg>{error}</ErrorMsg><button className="primary full" disabled={busy}>{busy?'Sending...':'Send reset link'} <ArrowRight size={16}/></button></form>}<div className="switch"><Link to="/login"><ArrowLeft size={14}/> Back to sign in</Link></div></AuthLayout>}
 function Verify(){const[params]=useSearchParams();const attempted=useRef(false);const[message,setMessage]=useState('Confirming your email...'),[error,setError]=useState(false);useEffect(()=>{if(attempted.current)return;attempted.current=true;const uid=params.get('uid'),token=params.get('token');if(!uid||!token){setError(true);setMessage('This verification link is incomplete.');return}request<{detail:string}>('/accounts/verify-email/',{method:'POST',auth:false,body:JSON.stringify({uid,token})}).then(x=>setMessage(x.detail)).catch(x=>{setError(true);setMessage(x.message)})},[params]);return <AuthLayout eyebrow="EMAIL VERIFICATION" title="One quick check." subtitle="Confirming your email address."><div className="success"><span><MailCheck/></span><h3>{error?'Verification failed':'Email verification'}</h3><p>{message}</p><Link className="primary full button-link" to="/login">Continue to sign in <ArrowRight size={16}/></Link></div></AuthLayout>}
 function Reset(){const[params]=useSearchParams();const[password,setPassword]=useState(''),[confirm,setConfirm]=useState(''),[error,setError]=useState(''),[done,setDone]=useState(false),[busy,setBusy]=useState(false);const submit=async(e:FormEvent)=>{e.preventDefault();if(password!==confirm){setError('Your passwords do not match.');return}setBusy(true);try{await request('/accounts/password-reset/confirm/',{method:'POST',auth:false,body:JSON.stringify({uid:params.get('uid'),token:params.get('token'),new_password:password,confirm_new_password:confirm})});setDone(true)}catch(x){setError((x as Error).message)}finally{setBusy(false)}};return <AuthLayout eyebrow="NEW PASSWORD" title="Create a new password." subtitle="Choose a strong password you haven’t used before.">{done?<Success title="Password updated" text="Your password has been changed. You can now sign in."/>:<form onSubmit={submit}><Field label="New password" name="new_password" type="password" required value={password} onChange={e=>setPassword(e.target.value)}/><Field label="Confirm new password" name="confirm_new_password" type="password" required value={confirm} onChange={e=>setConfirm(e.target.value)}/><ErrorMsg>{error}</ErrorMsg><button className="primary full" disabled={busy}>{busy?'Updating...':'Update password'} <ArrowRight size={16}/></button></form>}</AuthLayout>}
-function Shell(){const{user,logout}=useAuth(),nav=useNavigate(),loc=useLocation();const[mobile,setMobile]=useState(false),[menu,setMenu]=useState(false),[profileMenu,setProfileMenu]=useState(false),[notice,setNotice]=useState('');const title=loc.pathname.includes('applications')?'Applications':loc.pathname.includes('settings')?'Settings':loc.pathname.includes('specifications')?'Specifications':loc.pathname.includes('inspections')?'Inspections':'Overview';const signout=async()=>{await logout();nav('/login')};return <div className="shell">{mobile&&<button className="backdrop" onClick={()=>setMobile(false)}/>}<aside className={'sidebar '+(mobile?'open':'')}><div className="side-brand"><Brand/><button className="mobile-close" onClick={()=>setMobile(false)}><X/></button></div><div className="workspace"><span>A</span><div><b>Personal workspace</b><small>Free plan</small></div><ChevronDown size={15}/></div><small className="nav-label">WORKSPACE</small><nav><NavLink end to="/app"><Gauge/>Overview</NavLink><NavLink to="/app/applications"><FolderKanban/>Applications</NavLink><NavLink to="/app/specifications"><FileJson2/>Specifications <i>0</i></NavLink><NavLink to="/app/inspections"><ShieldCheck/>Inspections</NavLink></nav><small className="nav-label lower">PREFERENCES</small><nav><NavLink to="/app/settings"><Settings/>Settings</NavLink><button onClick={()=>setNotice('Help center will be available soon.')}><CircleHelp/>Help & support</button></nav><div className="side-bottom"><div className="tip"><Sparkles/><b>More clarity, less guesswork.</b><p>Your API workspace is just getting started.</p><button onClick={()=>nav('/app/specifications')}>Explore workspace <ArrowRight size={13}/></button></div><div className="account"><span>{(user?.display_name||'A').charAt(0).toUpperCase()}</span><div><b>{user?.display_name||'Account'}</b><small>{user?.email}</small></div><button onClick={()=>setMenu(!menu)}><ChevronDown size={16}/></button>{menu&&<div className="account-menu"><button onClick={()=>nav('/app/settings')}><Settings/> Account settings</button><button onClick={signout}><LogOut/> Sign out</button></div>}</div></div></aside><main className="main"><header className="topbar"><div className="crumb"><button className="mobile-menu" onClick={()=>setMobile(true)}><Menu/></button>Workspace <span>/</span> <b>{title}</b></div><div className="top-actions"><div className="top-search"><Search/> Search anything <kbd>⌘ K</kbd></div><button onClick={()=>setNotice('You are all caught up.')}><Bell/></button><div className="profile-control"><button className="avatar profile-trigger" aria-label="Open account menu" aria-expanded={profileMenu} onClick={()=>setProfileMenu(!profileMenu)}>{(user?.display_name||'A').charAt(0).toUpperCase()}</button>{profileMenu&&<div className="profile-menu"><div className="profile-menu-heading"><span className="profile-menu-avatar">{(user?.display_name||'A').charAt(0).toUpperCase()}</span><div><b>{user?.display_name||'Account'}</b><small>{user?.email}</small></div></div><div className="profile-status"><i/> {user?.is_active?'Email verified':'Email not verified'}</div><button onClick={()=>{setProfileMenu(false);nav('/app/settings')}}><Settings/> Account settings</button><button onClick={signout}><LogOut/> Sign out</button></div>}</div></div></header>{notice&&<div className="toast">{notice}<button onClick={()=>setNotice('')}><X/></button></div>}<div className="content"><Outlet context={{onNotice:setNotice}}/></div><footer className="app-footer"><span>© 2026 API Inspector</span><span><i/> All systems operational</span><span>Made for better APIs</span></footer></main></div>}
+function Shell(){const{user,logout}=useAuth(),nav=useNavigate(),loc=useLocation();const[mobile,setMobile]=useState(false),[menu,setMenu]=useState(false),[profileMenu,setProfileMenu]=useState(false),[notice,setNotice]=useState('');const title=loc.pathname.includes('applications')?'Applications':loc.pathname.includes('settings')?'Settings':loc.pathname.includes('specifications')?'Specifications':loc.pathname.includes('inspections')?'Inspections':'Overview';const signout=async()=>{await logout();nav('/login')};return <div className="shell">{mobile&&<button className="backdrop" onClick={()=>setMobile(false)}/>}<aside className={'sidebar '+(mobile?'open':'')}><div className="side-brand"><Brand/><button className="mobile-close" onClick={()=>setMobile(false)}><X/></button></div><div className="workspace"><span>A</span><div><b>Personal workspace</b><small>Free plan</small></div><ChevronDown size={15}/></div><small className="nav-label">WORKSPACE</small><nav><NavLink end to="/app"><Gauge/>Overview</NavLink><NavLink to="/app/applications"><FolderKanban/>Applications</NavLink><NavLink to="/app/specifications"><FileJson2/>Specifications</NavLink><NavLink to="/app/inspections"><ShieldCheck/>Inspections</NavLink></nav><small className="nav-label lower">PREFERENCES</small><nav><NavLink to="/app/settings"><Settings/>Settings</NavLink><button onClick={()=>setNotice('Help center will be available soon.')}><CircleHelp/>Help & support</button></nav><div className="side-bottom"><div className="tip"><Sparkles/><b>More clarity, less guesswork.</b><p>Your API workspace is just getting started.</p><button onClick={()=>nav('/app/specifications')}>Explore workspace <ArrowRight size={13}/></button></div><div className="account"><span>{(user?.display_name||'A').charAt(0).toUpperCase()}</span><div><b>{user?.display_name||'Account'}</b><small>{user?.email}</small></div><button onClick={()=>setMenu(!menu)}><ChevronDown size={16}/></button>{menu&&<div className="account-menu"><button onClick={()=>nav('/app/settings')}><Settings/> Account settings</button><button onClick={signout}><LogOut/> Sign out</button></div>}</div></div></aside><main className="main"><header className="topbar"><div className="crumb"><button className="mobile-menu" onClick={()=>setMobile(true)}><Menu/></button>Workspace <span>/</span> <b>{title}</b></div><div className="top-actions"><div className="top-search"><Search/> Search anything <kbd>⌘ K</kbd></div><button onClick={()=>setNotice('You are all caught up.')}><Bell/></button><div className="profile-control"><button className="avatar profile-trigger" aria-label="Open account menu" aria-expanded={profileMenu} onClick={()=>setProfileMenu(!profileMenu)}>{(user?.display_name||'A').charAt(0).toUpperCase()}</button>{profileMenu&&<div className="profile-menu"><div className="profile-menu-heading"><span className="profile-menu-avatar">{(user?.display_name||'A').charAt(0).toUpperCase()}</span><div><b>{user?.display_name||'Account'}</b><small>{user?.email}</small></div></div><div className="profile-status"><i/> {user?.is_active?'Email verified':'Email not verified'}</div><button onClick={()=>{setProfileMenu(false);nav('/app/settings')}}><Settings/> Account settings</button><button onClick={signout}><LogOut/> Sign out</button></div>}</div></div></header>{notice&&<div className="toast">{notice}<button onClick={()=>setNotice('')}><X/></button></div>}<div className="content"><Outlet context={{onNotice:setNotice}}/></div><footer className="app-footer"><span>© 2026 API Inspector</span><span><i/> All systems operational</span><span>Made for better APIs</span></footer></main></div>}
 type Context={onNotice:(s:string)=>void};
 function Overview(){const{user}=useAuth();const{onNotice}=useOutletContext<Context>();const first=user?.display_name?.split(' ')[0]||'there';return <><div className="welcome"><div><small className="eyebrow">YOUR WORKSPACE IS READY</small><h1>Good to have you, {first}<em>✦</em></h1><p>Here’s what’s happening across your API workspace.</p></div><button className="primary" onClick={()=>onNotice('Specification import is the next feature we are building.')}><Plus/> Import specification</button></div><section className="hero"><div><span className="hero-tag"><Sparkles/> YOUR API WORKSPACE</span><h2>Make every API<br/>easier to understand.</h2><p>Start with an OpenAPI specification. Discover endpoints, explore schemas, and build a clearer picture of your API surface.</p><button onClick={()=>onNotice('The import flow will be connected when the specifications API is ready.')}>Get started <ArrowRight/></button></div><div className="hero-art"><div className="mock-file"><Code2/> openapi.yaml <i/></div><div className="mock-card"><small>API OVERVIEW</small><strong>—</strong><span>Endpoints discovered</span><div className="bars"><i/><i/><i/><i/><i/><i/></div><small>Waiting for your first spec</small></div><div className="float-card"><Activity/> Contract clarity <b>Starts here</b></div></div></section><div className="section-title"><div><h2>Workspace at a glance</h2><p>Your API activity will appear here as you get started.</p></div><small>JUST NOW</small></div><div className="stats"><Stat icon={<FileJson2/>} label="Specifications" value="0" note="No specs imported yet"/><Stat icon={<Code2/>} label="Endpoints discovered" value="—" note="Waiting for first import"/><Stat icon={<ShieldCheck/>} label="Inspections run" value="0" note="Ready when you are"/><Stat icon={<Activity/>} label="Issues detected" value="—" note="No inspection data yet"/></div><div className="lower-grid"><section className="panel"><div className="panel-title"><Sparkles/><h3>Get started in three steps</h3><small>0 OF 3 COMPLETE</small></div><div className="progress"/>{[['01','Import an API specification','Upload an OpenAPI JSON or YAML file.'],['02','Explore your API surface','Browse endpoints, parameters, and schemas.'],['03','Run your first inspection','Compare documented contracts with real behavior.']].map(x=><div className="step" key={x[0]}><b>{x[0]}</b><div><strong>{x[1]}</strong><p>{x[2]}</p></div><small>NEXT</small></div>)}</section><section className="panel activity-panel"><div className="panel-title"><Activity/><h3>Recent activity</h3><small className="live">● LIVE</small></div><div className="empty"><FolderKanban/><b>No activity yet</b><p>Once you import a specification, your workspace activity will show up here.</p></div></section></div><div className="privacy"><ShieldCheck/> Your data stays yours. API Inspector only works with the specifications and endpoints you choose to provide.</div></>}
 function Stat({icon,label,value,note}:{icon:ReactNode;label:string;value:string;note:string}){return <div className="stat"><span>{icon}</span><small>ALL TIME</small><strong>{value}</strong><b>{label}</b><p>{note}</p></div>}
 function EmptyPage({kind}:{kind:'specifications'|'inspections'}){const{onNotice}=useOutletContext<Context>();const specs=kind==='specifications';return <div className="subpage"><div className="sub-heading"><div><small className="eyebrow">{specs?'API CATALOG':'QUALITY & RELIABILITY'}</small><h1>{specs?'Specifications':'Inspections'}</h1><p>{specs?'Your imported API contracts, organized in one place.':'Understand the gap between your API contract and real responses.'}</p></div>{specs&&<button className="primary" onClick={()=>onNotice('Specification import is coming next.')}><Plus/> Import specification</button>}</div>{specs&&<div className="toolbar"><div><Search/><input placeholder="Search specifications..."/></div><small>0 specifications</small></div>}<section className="big-empty"><span className="empty-file">{specs?<FileJson2/>:<ShieldCheck/>}</span><small className="eyebrow">{specs?'NOTHING HERE YET':'COMING NEXT'}</small><h2>{specs?'Your API catalog starts here.':'Confidence starts with visibility.'}</h2><p>{specs?'Import an OpenAPI 3.0 or 3.1 file to automatically discover paths, methods, parameters, and schemas.':'Inspection runs will compare live API responses against your OpenAPI contract and surface meaningful differences.'}</p>{specs?<><button className="primary" onClick={()=>onNotice('The import flow will be connected when the specifications API is ready.')}><UploadCloud/> Import your first spec</button><div className="formats">SUPPORTED FORMATS <code>.json</code><code>.yaml</code><code>.yml</code></div></>:<div className="coming"><span>• Response schema comparison</span><span>• Status code validation</span><span>• Latency and contract insights</span></div>}</section></div>}
-function Specifications(){return <EmptyPage kind="specifications"/>}function Inspections(){return <EmptyPage kind="inspections"/>}
+type Specification = {
+  id: number;
+  application: number;
+  name: string;
+  description: string;
+  api_version: string;
+  openapi_version: string;
+  document: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+const emptyOpenApiDocument = JSON.stringify({
+  openapi: "3.0.3",
+  info: { title: "Example API", version: "1.0.0" },
+  paths: {},
+}, null, 2);
+
+function Specifications() {
+  const navigate = useNavigate();
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [selectedApplicationId, setSelectedApplicationId] = useState("");
+  const [specifications, setSpecifications] = useState<Specification[]>([]);
+  const [applicationsLoading, setApplicationsLoading] = useState(true);
+  const [specificationsLoading, setSpecificationsLoading] = useState(false);
+  const [pageError, setPageError] = useState("");
+  const [search, setSearch] = useState("");
+  const [dialogMode, setDialogMode] = useState<"create" | "edit" | "view" | null>(null);
+  const [activeSpecification, setActiveSpecification] = useState<Specification | null>(null);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [documentText, setDocumentText] = useState(emptyOpenApiDocument);
+  const [formError, setFormError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    request<Application[] | { results: Application[] }>("/applications/")
+      .then((data) => {
+        if (!alive) return;
+        const records = Array.isArray(data) ? data : data.results || [];
+        setApplications(records);
+        if (records.length) setSelectedApplicationId(String(records[0].id));
+      })
+      .catch((error) => {
+        if (alive) setPageError((error as Error).message);
+      })
+      .finally(() => {
+        if (alive) setApplicationsLoading(false);
+      });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedApplicationId) {
+      setSpecifications([]);
+      return;
+    }
+    let alive = true;
+    setSpecificationsLoading(true);
+    setPageError("");
+    request<Specification[] | { results: Specification[] }>(
+      "/applications/" + selectedApplicationId + "/specifications/"
+    )
+      .then((data) => {
+        if (!alive) return;
+        setSpecifications(Array.isArray(data) ? data : data.results || []);
+      })
+      .catch((error) => {
+        if (alive) {
+          setSpecifications([]);
+          setPageError((error as Error).message);
+        }
+      })
+      .finally(() => {
+        if (alive) setSpecificationsLoading(false);
+      });
+    return () => { alive = false; };
+  }, [selectedApplicationId]);
+
+  const openCreate = () => {
+    setActiveSpecification(null);
+    setName("");
+    setDescription("");
+    setDocumentText(emptyOpenApiDocument);
+    setFormError("");
+    setDialogMode("create");
+  };
+
+  const openView = (specification: Specification) => {
+    setActiveSpecification(specification);
+    setDialogMode("view");
+  };
+
+  const openEdit = (specification: Specification) => {
+    setActiveSpecification(specification);
+    setName(specification.name);
+    setDescription(specification.description || "");
+    setDocumentText(JSON.stringify(specification.document, null, 2));
+    setFormError("");
+    setDialogMode("edit");
+  };
+
+  const closeDialog = () => {
+    if (saving || deleting) return;
+    setDialogMode(null);
+    setActiveSpecification(null);
+    setFormError("");
+  };
+
+  const saveSpecification = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedApplicationId || !name.trim()) return;
+
+    let parsedDocument: any;
+    try {
+      parsedDocument = JSON.parse(documentText);
+    } catch {
+      setFormError("The document is not valid JSON. Check the syntax and try again.");
+      return;
+    }
+
+    if (!parsedDocument || typeof parsedDocument !== "object" || Array.isArray(parsedDocument)) {
+      setFormError("The OpenAPI document must be a JSON object.");
+      return;
+    }
+    if (typeof parsedDocument.openapi !== "string" || !parsedDocument.openapi.trim()) {
+      setFormError('The document must contain an "openapi" version, such as "3.0.3".');
+      return;
+    }
+    if (!parsedDocument.info || typeof parsedDocument.info.version !== "string" || !parsedDocument.info.version.trim()) {
+      setFormError('The document must contain "info.version" to identify the API version.');
+      return;
+    }
+
+    const payload = {
+      name: name.trim(),
+      description: description.trim(),
+      api_version: parsedDocument.info.version,
+      openapi_version: parsedDocument.openapi,
+      document: parsedDocument,
+    };
+
+    setSaving(true);
+    setFormError("");
+    try {
+      if (dialogMode === "edit" && activeSpecification) {
+        const updated = await request<Specification>(
+          "/specifications/" + activeSpecification.id + "/",
+          { method: "PATCH", body: JSON.stringify(payload) }
+        );
+        setSpecifications((current) => current.map((item) =>
+          item.id === activeSpecification.id ? updated : item
+        ));
+        setActiveSpecification(updated);
+        setDialogMode("view");
+      } else {
+        const created = await request<Specification>(
+          "/applications/" + selectedApplicationId + "/specifications/create/",
+          { method: "POST", body: JSON.stringify(payload) }
+        );
+        setSpecifications((current) => [created, ...current]);
+        setDialogMode(null);
+        setActiveSpecification(null);
+      }
+    } catch (error) {
+      setFormError((error as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeSpecification = async () => {
+    if (!activeSpecification) return;
+    if (!window.confirm('Delete "' + activeSpecification.name + '"? This action cannot be undone.')) return;
+    setDeleting(true);
+    setPageError("");
+    try {
+      await request<void>("/specifications/" + activeSpecification.id + "/", { method: "DELETE" });
+      setSpecifications((current) => current.filter((item) => item.id !== activeSpecification.id));
+      setDialogMode(null);
+      setActiveSpecification(null);
+    } catch (error) {
+      setPageError((error as Error).message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const filteredSpecifications = specifications.filter((item) =>
+    (item.name + " " + item.description + " " + item.api_version)
+      .toLowerCase()
+      .includes(search.toLowerCase())
+  );
+  const selectedApplication = applications.find((item) => String(item.id) === selectedApplicationId);
+
+  return (
+    <div className="subpage specifications-page">
+      <div className="sub-heading">
+        <div>
+          <small className="eyebrow">API CATALOG</small>
+          <h1>Specifications</h1>
+          <p>Manage the OpenAPI documents connected to your applications.</p>
+        </div>
+        <button className="primary" onClick={openCreate} disabled={!applications.length}>
+          <Plus size={17} /> New specification
+        </button>
+      </div>
+
+      {applicationsLoading ? (
+        <div className="specifications-state"><span className="spinner" /><p>Loading applications...</p></div>
+      ) : applications.length === 0 ? (
+        <section className="specifications-empty">
+          <span className="specifications-empty-icon"><FolderKanban size={25} /></span>
+          <h2>Create an application first</h2>
+          <p>Every specification belongs to an application. Create one before adding an OpenAPI document.</p>
+          <button className="primary" onClick={() => navigate("/app/applications")}>
+            Go to applications <ArrowRight size={16} />
+          </button>
+        </section>
+      ) : (
+        <>
+          <div className="specifications-toolbar">
+            <label className="application-picker">
+              <span>APPLICATION</span>
+              <select
+                aria-label="Choose application"
+                value={selectedApplicationId}
+                onChange={(event) => setSelectedApplicationId(event.target.value)}
+              >
+                {applications.map((application) => (
+                  <option key={application.id} value={application.id}>{application.name}</option>
+                ))}
+              </select>
+              <ChevronDown size={15} />
+            </label>
+            <div className="specifications-search">
+              <Search size={16} />
+              <input
+                aria-label="Search specifications"
+                placeholder="Search specifications..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+            <span className="specifications-count">
+              {specifications.length} {specifications.length === 1 ? "specification" : "specifications"}
+            </span>
+          </div>
+
+          {pageError && <div className="applications-error">{pageError}</div>}
+
+          {specificationsLoading ? (
+            <div className="specifications-state"><span className="spinner" /><p>Loading specifications...</p></div>
+          ) : filteredSpecifications.length ? (
+            <div className="specifications-grid">
+              {filteredSpecifications.map((specification) => (
+                <article className="specification-card" key={specification.id}>
+                  <div className="specification-card-top">
+                    <span className="specification-icon"><FileJson2 size={20} /></span>
+                    <span className="specification-version">OpenAPI {specification.openapi_version}</span>
+                  </div>
+                  <h2>{specification.name}</h2>
+                  <p>{specification.description || "No description added."}</p>
+                  <div className="specification-meta">
+                    <span>API version <b>{specification.api_version}</b></span>
+                    <span>Updated {new Date(specification.updated_at).toLocaleDateString()}</span>
+                  </div>
+                  <div className="specification-card-actions">
+                    <button className="secondary-button" onClick={() => openView(specification)}>
+                      View document <ArrowRight size={14} />
+                    </button>
+                    <button
+                      className="specification-icon-button"
+                      aria-label={"Edit " + specification.name}
+                      title="Edit specification"
+                      onClick={() => openEdit(specification)}
+                    >
+                      <Settings size={15} />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <section className="specifications-empty">
+              <span className="specifications-empty-icon"><FileJson2 size={25} /></span>
+              <h2>{search ? "No matching specifications" : "Add your first specification"}</h2>
+              <p>{search
+                ? "Try a different search term."
+                : "Add an OpenAPI JSON document to start exploring the API contract for " + (selectedApplication?.name || "this application") + "."}</p>
+              {!search && <button className="primary" onClick={openCreate}><Plus size={16} /> New specification</button>}
+            </section>
+          )}
+        </>
+      )}
+
+      {dialogMode && (
+        <div className="specification-modal-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) closeDialog();
+        }}>
+          <section className="specification-modal" role="dialog" aria-modal="true" aria-labelledby="specification-modal-title">
+            {dialogMode === "view" && activeSpecification ? (
+              <>
+                <div className="specification-modal-heading">
+                  <div>
+                    <small className="eyebrow">OPENAPI DOCUMENT</small>
+                    <h2 id="specification-modal-title">{activeSpecification.name}</h2>
+                    <p>{activeSpecification.description || "No description added."}</p>
+                  </div>
+                  <button className="application-modal-close" aria-label="Close" onClick={closeDialog}><X size={19} /></button>
+                </div>
+                <div className="specification-detail-meta">
+                  <span>OpenAPI <b>{activeSpecification.openapi_version}</b></span>
+                  <span>API version <b>{activeSpecification.api_version}</b></span>
+                </div>
+                <pre className="specification-document-preview">{JSON.stringify(activeSpecification.document, null, 2)}</pre>
+                <div className="application-modal-actions">
+                  <button className="danger-button" onClick={removeSpecification} disabled={deleting}>
+                    <Trash2 size={15} /> {deleting ? "Deleting..." : "Delete"}
+                  </button>
+                  <button className="secondary-button" onClick={closeDialog}>Close</button>
+                  <button className="primary" onClick={() => openEdit(activeSpecification)}>
+                    <Settings size={15} /> Edit specification
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="specification-modal-heading">
+                  <div>
+                    <small className="eyebrow">{dialogMode === "edit" ? "UPDATE API CONTRACT" : "ADD TO API CATALOG"}</small>
+                    <h2 id="specification-modal-title">{dialogMode === "edit" ? "Edit specification" : "New specification"}</h2>
+                    <p>{selectedApplication?.name || "Selected application"}</p>
+                  </div>
+                  <button className="application-modal-close" aria-label="Close" onClick={closeDialog}><X size={19} /></button>
+                </div>
+                <form onSubmit={saveSpecification}>
+                  <div className="field">
+                    <label htmlFor="specification-name">Name</label>
+                    <input
+                      id="specification-name"
+                      className="input"
+                      maxLength={200}
+                      placeholder="e.g. Public API"
+                      required
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="specification-description">Description <span>OPTIONAL</span></label>
+                    <textarea
+                      id="specification-description"
+                      className="input specification-description"
+                      placeholder="What does this API specification describe?"
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="specification-document">OpenAPI document <span>JSON</span></label>
+                    <textarea
+                      id="specification-document"
+                      className="input specification-document-input"
+                      spellCheck={false}
+                      required
+                      value={documentText}
+                      onChange={(event) => setDocumentText(event.target.value)}
+                    />
+                    <small className="specification-hint">The API version and OpenAPI version are read from info.version and openapi in the document.</small>
+                  </div>
+                  {formError && <div className="applications-error">{formError}</div>}
+                  <div className="application-modal-actions">
+                    <button type="button" className="secondary-button" onClick={closeDialog}>Cancel</button>
+                    <button className="primary" disabled={saving || !name.trim()}>
+                      {saving ? "Saving..." : dialogMode === "edit" ? "Save changes" : "Create specification"}
+                      <ArrowRight size={15} />
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Inspections(){return <EmptyPage kind="inspections"/>}
 function SettingsPage(){const{user,reload}=useAuth();const[old,setOld]=useState(''),[next,setNext]=useState(''),[confirm,setConfirm]=useState(''),[error,setError]=useState(''),[success,setSuccess]=useState(''),[busy,setBusy]=useState(false);const submit=async(e:FormEvent)=>{e.preventDefault();setError('');setSuccess('');if(next!==confirm){setError('Your new passwords do not match.');return}setBusy(true);try{await request('/accounts/change-password/',{method:'POST',body:JSON.stringify({old_password:old,new_password:next,confirm_new_password:confirm})});setOld('');setNext('');setConfirm('');setSuccess('Password changed successfully.');await reload()}catch(x){setError((x as Error).message)}finally{setBusy(false)}};return <div className="subpage"><div className="sub-heading"><div><small className="eyebrow">YOUR WORKSPACE</small><h1>Settings</h1><p>Manage your account and security preferences.</p></div></div><div className="settings-grid"><section className="panel settings-panel"><h3>Profile information</h3><p>Your account details.</p><div className="detail"><small>Display name</small><b>{user?.display_name||'—'}</b></div><div className="detail"><small>Email address</small><b>{user?.email||'—'}</b><em>{user?.is_active?'Verified account':'Email not verified'}</em></div><div className="detail"><small>Member since</small><b>{user?.created_at?new Date(user.created_at).toLocaleDateString():'—'}</b></div></section><section className="panel settings-panel"><h3>Change password</h3><p>Choose a strong password to keep your account secure.</p><form onSubmit={submit}><Field label="Current password" name="old_password" type="password" required value={old} onChange={e=>setOld(e.target.value)}/><Field label="New password" name="new_password" type="password" required value={next} onChange={e=>setNext(e.target.value)}/><Field label="Confirm new password" name="confirm_new_password" type="password" required value={confirm} onChange={e=>setConfirm(e.target.value)}/><ErrorMsg>{error}</ErrorMsg>{success&&<div className="success-msg">{success}</div>}<button className="primary">Update password <ArrowRight/></button></form></section></div></div>}
 type Application={id:number;name:string;description:string;created_at:string;updated_at:string};
 function Applications(){

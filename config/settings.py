@@ -48,6 +48,7 @@ INSTALLED_APPS = [
 
     # Local apps
     "accounts.apps.AccountsConfig",
+    "inspector.apps.InspectorConfig"
 ]
 
 

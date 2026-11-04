@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
-import { Activity, ArrowLeft, ArrowRight, Bell, Braces, CheckCircle2, ChevronDown, CircleHelp, Code2, FileJson2, FolderKanban, Gauge, GitCompareArrows, LockKeyhole, LogOut, MailCheck, Menu, Plus, Search, Settings, ShieldCheck, Sparkles, UploadCloud, X } from 'lucide-react';
+import { Activity, ArrowLeft, ArrowRight, Bell, Braces, CheckCircle2, ChevronDown, CircleHelp, Code2, FileJson2, FolderKanban, Gauge, GitCompareArrows, LockKeyhole, LogOut, MailCheck, Menu, Plus, Search, Settings, ShieldCheck, Sparkles, Trash2, UploadCloud, X } from 'lucide-react';
 
 type User={id:number;email:string;display_name:string;created_at:string;is_active:boolean};
 const API=import.meta.env.VITE_API_BASE_URL||'/api';
@@ -102,6 +102,7 @@ function Applications(){
   const [name,setName]=useState('');
   const [description,setDescription]=useState('');
   const [saving,setSaving]=useState(false);
+  const [deletingId,setDeletingId]=useState<number|null>(null);
 
   useEffect(()=>{
     let alive=true;
@@ -133,6 +134,20 @@ function Applications(){
     }
   };
 
+  const removeApplication=async(item:Application)=>{
+    if(!window.confirm(`Delete "${item.name}"? This action cannot be undone.`))return;
+    setDeletingId(item.id);
+    setError('');
+    try{
+      await request<void>(`/applications/${item.id}/delete/`,{method:'DELETE'});
+      setItems(current=>current.filter(application=>application.id!==item.id));
+    }catch(err){
+      setError((err as Error).message);
+    }finally{
+      setDeletingId(null);
+    }
+  };
+
   const filtered=items.filter(item=>
     (item.name+' '+item.description).toLowerCase().includes(search.toLowerCase())
   );
@@ -152,7 +167,7 @@ function Applications(){
         <div className="application-card-top"><span className="application-icon"><FolderKanban size={20}/></span><small>APPLICATION</small></div>
         <h2>{item.name}</h2>
         <p>{item.description||'No description added.'}</p>
-        <div className="application-card-footer"><span>Created {new Date(item.created_at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}</span><span className="application-id">ID · {item.id}</span></div>
+        <div className="application-card-footer"><span>Created {new Date(item.created_at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}</span><div className="application-card-actions"><span className="application-id">ID · {item.id}</span><button type="button" className="application-delete" aria-label={`Delete ${item.name}`} title="Delete application" disabled={deletingId===item.id} onClick={()=>removeApplication(item)}>{deletingId===item.id?<span className="delete-spinner"/>:<Trash2 size={15}/>}</button></div></div>
       </article>)}</div>:
       <section className="applications-empty">
         <span className="applications-empty-icon"><FolderKanban size={25}/></span>

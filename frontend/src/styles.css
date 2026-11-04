@@ -136,3 +136,44 @@ body,.shell,.main,.loading{background:#070c16}
 .success{background:#0d1726;border-color:#1e2d43}
 .profile-status{border-color:#1e2d43}
 .app-footer{border-color:#1a273a}
+
+
+/* Applications */
+.applications-page{max-width:1120px}
+.applications-toolbar{display:flex;align-items:center;justify-content:space-between;margin:0 0 17px}
+.applications-search{height:40px;width:min(100%,360px);display:flex;align-items:center;gap:10px;padding:0 12px;border:1px solid #263852;border-radius:8px;background:#0d1726;color:#8495af}
+.applications-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#e5ecf8;font:inherit;font-size:11px}
+.applications-search input::placeholder{color:#71819a}
+.applications-toolbar>span{font-size:10px;color:#8293ac}
+.applications-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.application-card{min-width:0;padding:18px;border:1px solid #1e2d43;border-radius:11px;background:#0d1726;transition:border-color .2s,transform .2s}
+.application-card:hover{border-color:#49649a;transform:translateY(-2px)}
+.application-card-top{display:flex;align-items:center;justify-content:space-between}
+.application-icon,.applications-empty-icon{width:39px;height:39px;display:grid;place-items:center;border-radius:10px;background:#1b2d4b;color:#9bb5ff}
+.application-card-top>small{font-size:8px;letter-spacing:1px;color:#71839f}
+.application-card h2{margin:17px 0 6px;color:#e5ecf8;font:700 15px Manrope,sans-serif;overflow-wrap:anywhere}
+.application-card>p{height:38px;margin:0;color:#91a0b8;font-size:10px;line-height:1.7;overflow:hidden}
+.application-card-footer{display:flex;justify-content:space-between;gap:8px;margin-top:18px;padding-top:12px;border-top:1px solid #1c2a3e;color:#8192ab;font-size:9px}
+.application-id{white-space:nowrap;color:#71819a}
+.applications-empty,.applications-state{min-height:330px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px 18px;border:1px dashed #293b56;border-radius:12px;background:#0b1422}
+.applications-empty-icon{width:52px;height:52px;margin-bottom:12px}
+.applications-empty h2{margin:5px 0;color:#e0eafa;font:700 17px Manrope,sans-serif}
+.applications-empty p,.applications-state p{max-width:360px;margin:4px 0 17px;color:#91a0b8;font-size:10px;line-height:1.7}
+.applications-error{margin:10px 0;padding:10px 12px;border:1px solid #633746;border-radius:7px;background:#321d2a;color:#ffacba;font-size:10px}
+.application-modal-backdrop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:18px;background:#020711b8;backdrop-filter:blur(5px)}
+.application-modal{width:min(100%,470px);padding:23px;border:1px solid #2a3d5a;border-radius:14px;background:#0d1726;box-shadow:0 24px 80px #0009}
+.application-modal-heading{display:flex;justify-content:space-between;gap:15px;margin-bottom:22px}
+.application-modal-heading h2{margin:7px 0 5px;color:#e5ecf8;font:800 20px Manrope,sans-serif}
+.application-modal-heading p{margin:0;color:#91a0b8;font-size:10px}
+.application-modal-close{width:32px;height:32px;display:grid;place-items:center;flex:0 0 32px;border:1px solid #263852;border-radius:8px;background:#111e32;color:#9aabc3}
+.application-modal form{display:grid;gap:15px}
+.application-modal .field>label{display:flex;justify-content:space-between}
+.application-modal .field>label span{color:#71839f;font-size:8px;letter-spacing:.7px}
+.application-description{height:100px;min-height:100px;padding:11px;resize:vertical;font:11px 'DM Sans',sans-serif}
+.application-modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:5px}
+.secondary-button{height:39px;padding:0 14px;border:1px solid #2a3b55;border-radius:7px;background:#111e32;color:#b4c3d9;font-size:10px;font-weight:600}
+.application-modal-actions .primary{display:flex;align-items:center;gap:8px}
+.spinner{width:22px;height:22px;border:2px solid #2c3e5a;border-top-color:#8eabff;border-radius:50%;animation:application-spin .8s linear infinite}
+@keyframes application-spin{to{transform:rotate(360deg)}}
+@media(max-width:1000px){.applications-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.applications-grid{grid-template-columns:1fr}.applications-toolbar{gap:10px}.applications-search{width:100%}.application-modal{padding:18px}.applications-empty{min-height:290px}}

@@ -593,7 +593,7 @@ function Inspections() {
   );
   const testCases = testPlan?.test_cases || [];
   const findings = analysis?.findings || [];
-  const severityTypes = ["Low", "Medium", "High", "Critical"];
+  const severityTypes = ["low", "medium", "high", "critical"];
 
   const generateTests = async () => {
     if (!specificationId) return;

@@ -650,7 +650,9 @@ function Inspections() {
         endpoint: item.endpoint || matchingTest.endpoint,
         method: item.method || matchingTest.method,
         expected_status_codes:
-          item.expected_status_codes || matchingTest.expected_status_codes || [],
+          Array.isArray(item.expected_status_codes) && item.expected_status_codes.length
+            ? item.expected_status_codes
+            : matchingTest.expected_status_codes || [],
       };
     });
 

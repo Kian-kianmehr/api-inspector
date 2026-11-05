@@ -513,10 +513,10 @@ function Inspections() {
   const [loadingApplications, setLoadingApplications] = useState(true);
   const [loadingSpecifications, setLoadingSpecifications] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [resultsText, setResultsText] = useState("");
+  const [analyzingTest, setAnalyzingTest] = useState<string | null>(null);
+  const [responseTexts, setResponseTexts] = useState<Record<string, string>>({});
+  const [caseAnalyses, setCaseAnalyses] = useState<Record<string, Analysis>>({});
   const [testPlan, setTestPlan] = useState<TestPlan | null>(null);
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -550,8 +550,8 @@ function Inspections() {
     setSpecifications([]);
     setSpecificationId("");
     setTestPlan(null);
-    setAnalysis(null);
-    setResultsText("");
+    setCaseAnalyses({});
+    setResponseTexts({});
     setError("");
     setNotice("");
 
@@ -592,13 +592,13 @@ function Inspections() {
   };
 
   const generateTests = async () => {
-    if (!specificationId || generating || analyzing) return;
+    if (!specificationId || generating || analyzingTest !== null) return;
     setGenerating(true);
     setError("");
     setNotice("");
     setTestPlan(null);
-    setAnalysis(null);
-    setResultsText("");
+    setCaseAnalyses({});
+    setResponseTexts({});
 
     try {
       const result = await request<TestPlan>(
@@ -617,81 +617,102 @@ function Inspections() {
     }
   };
 
-  const analyzeResults = async () => {
+  const analyzeTest = async (test: TestCase, index: number) => {
+    const key = String(index) + ":" + test.name;
     setError("");
     setNotice("");
-
     let parsed: unknown;
     try {
-      parsed = JSON.parse(resultsText);
+      parsed = JSON.parse(responseTexts[key] || "");
     } catch {
-      setError("The execution results are not valid JSON. Check the brackets and commas, then try again.");
+      setError("The response for \"" + test.name + "\" is not valid JSON.");
       return;
     }
-
-    if (
-      !Array.isArray(parsed) ||
-      parsed.length === 0 ||
-      parsed.length > 200 ||
-      parsed.some((item) => !item || typeof item !== "object" || Array.isArray(item))
-    ) {
-      setError("Provide a JSON array containing between 1 and 200 result objects.");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      setError("Enter one JSON object containing the execution result for this test.");
       return;
     }
-
-    const enrichedResults = parsed.map((item: Record<string, unknown>) => {
-      const label = String(item.test_name || item.name || item.title || "").trim().toLowerCase();
-      const matchingTest = testCases.find(
-        (test) => test.name.trim().toLowerCase() === label
-      );
-      if (!matchingTest) return item;
-      return {
-        ...item,
-        endpoint: item.endpoint || matchingTest.endpoint,
-        method: item.method || matchingTest.method,
-        expected_status_codes:
-          Array.isArray(item.expected_status_codes) && item.expected_status_codes.length
-            ? item.expected_status_codes
-            : matchingTest.expected_status_codes || [],
-      };
+    const enrichedResult = {
+      ...(parsed as Record<string, unknown>),
+      name: test.name,
+      endpoint: test.endpoint,
+      method: test.method,
+      expected_status_codes: test.expected_status_codes || [],
+    };
+    setAnalyzingTest(key);
+    setCaseAnalyses((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
     });
-
-    setAnalyzing(true);
-    setAnalysis(null);
     try {
       const result = await request<Analysis>(
         "/specifications/" + specificationId + "/ai/analyze-results/",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            test_results: enrichedResults,
-            instructions: "",
-          }),
-        }
+        { method: "POST", body: JSON.stringify({ test_results: [enrichedResult], instructions: "" }) }
       );
-
-      if (
-        !result ||
-        typeof result.summary !== "string" ||
-        !Array.isArray(result.findings) ||
-        !Array.isArray(result.suggestions)
-      ) {
+      if (!result || typeof result.summary !== "string" || !Array.isArray(result.findings) || !Array.isArray(result.suggestions)) {
         throw new Error("The AI service returned an invalid analysis.");
       }
-
-      setAnalysis(result);
-      setNotice("Execution results analyzed.");
+      setCaseAnalyses((current) => ({ ...current, [key]: result }));
+      setNotice("Analysis completed for " + test.name + ".");
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setAnalyzing(false);
+      setAnalyzingTest(null);
     }
+  };
+
+  const renderCaseAnalysis = (result: Analysis) => {
+    const resultFindings = result.findings || [];
+    const severityCount = (severity: string) =>
+      resultFindings.filter((item) => item.severity.toLowerCase() === severity).length;
+    return (
+      <div className="inspection-case-analysis">
+        <div className="inspection-case-analysis-heading">
+          <strong>Analysis report</strong>
+          <span>{resultFindings.length} {resultFindings.length === 1 ? "finding" : "findings"}</span>
+        </div>
+        <p className="inspection-case-analysis-summary">{result.summary}</p>
+        {resultFindings.length === 0 ? (
+          <div className="inspection-clean-state">
+            <CheckCircle2 size={20} />
+            <div><strong>No issues detected</strong><p>The supplied response matches the expected behavior.</p></div>
+          </div>
+        ) : (
+          <>
+            <div className="inspection-severity-grid">
+              {(["critical", "high", "medium", "low"] as const).map((severity) => (
+                <div className={"inspection-severity inspection-severity-" + severity} key={severity}>
+                  <span>{severity}</span><strong>{severityCount(severity)}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="inspection-finding-list">
+              {resultFindings.map((finding, findingIndex) => (
+                <article className="inspection-finding" key={finding.title + findingIndex}>
+                  <div className="inspection-finding-heading">
+                    <div><span className="inspection-finding-index">{String(findingIndex + 1).padStart(2, "0")}</span><h3>{finding.title}</h3></div>
+                    <span className={"inspection-severity-tag inspection-severity-tag-" + finding.severity.toLowerCase()}>{finding.severity}</span>
+                  </div>
+                  <p>{finding.description}</p>
+                  {finding.endpoint && <code className="inspection-finding-endpoint">{finding.endpoint}</code>}
+                  <div className="inspection-recommendation"><strong>Recommended action</strong><p>{finding.recommendation}</p></div>
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+        {result.suggestions.length > 0 && (
+          <div className="inspection-suggestions"><h3>Next steps</h3><ul>{result.suggestions.map((suggestion, i) => <li key={i}>{suggestion}</li>)}</ul></div>
+        )}
+      </div>
+    );
   };
 
   const resetInspection = () => {
     setTestPlan(null);
-    setAnalysis(null);
-    setResultsText("");
+    setCaseAnalyses({});
+    setResponseTexts({});
     setError("");
     setNotice("");
   };
@@ -757,8 +778,8 @@ function Inspections() {
                   onChange={(event) => {
                     setSpecificationId(event.target.value);
                     setTestPlan(null);
-                    setAnalysis(null);
-                    setResultsText("");
+                    setCaseAnalyses({});
+                    setResponseTexts({});
                     setError("");
                     setNotice("");
                   }}
@@ -808,7 +829,7 @@ function Inspections() {
                     className="primary inspection-action"
                     type="button"
                     onClick={generateTests}
-                    disabled={!specificationId || generating || analyzing}
+                    disabled={!specificationId || generating || analyzingTest !== null}
                   >
                     {generating ? <><span className="inspection-button-spinner" />Generating...</> : <>Generate test cases <ArrowRight size={16} /></>}
                   </button>
@@ -875,106 +896,44 @@ function Inspections() {
                             request_body: test.request_body ?? null,
                           }, null, 2)}</pre>
                         </details>
+                        <div className="inspection-case-response">
+                          <div className="inspection-case-response-heading">
+                            <div><strong>Execution response</strong><span>Enter the actual result for this test</span></div>
+                            <span>JSON OBJECT</span>
+                          </div>
+                          <textarea
+                            className="input inspection-case-response-input"
+                            rows={5}
+                            spellCheck={false}
+                            aria-label={"Execution response for " + test.name}
+                            placeholder={'{\n  "status_code": 200,\n  "passed": true,\n  "response_time_ms": 125\n}'}
+                            value={responseTexts[String(index) + ":" + test.name] || ""}
+                            onChange={(event) => {
+                              const key = String(index) + ":" + test.name;
+                              setResponseTexts((current) => ({ ...current, [key]: event.target.value }));
+                            }}
+                          />
+                          <div className="inspection-case-response-footer">
+                            <span>Test name and expected status are added automatically.</span>
+                            <button
+                              className="primary inspection-action"
+                              type="button"
+                              onClick={() => analyzeTest(test, index)}
+                              disabled={analyzingTest !== null || generating || !(responseTexts[String(index) + ":" + test.name] || "").trim()}
+                            >
+                              {analyzingTest === String(index) + ":" + test.name
+                                ? <><span className="inspection-button-spinner" />Analyzing...</>
+                                : <>Analyze this test <ArrowRight size={16} /></>}
+                            </button>
+                          </div>
+                        </div>
+                        {caseAnalyses[String(index) + ":" + test.name] && renderCaseAnalysis(caseAnalyses[String(index) + ":" + test.name])}
                       </article>
                     ))}
                   </div>
                 </section>
               )}
 
-              {testPlan && (
-                <section className="inspection-execution panel">
-                  <div className="inspection-panel-heading">
-                    <span className="inspection-step">03</span>
-                    <div>
-                      <h2>Analyze execution results</h2>
-                      <p>Paste the results from your API client as a JSON array. Match each result's name to a generated test case to carry its endpoint and expected status into the analysis.</p>
-                    </div>
-                  </div>
-                  <div className="inspection-format-note">
-                    <strong>Expected format</strong>
-                    <code>{"{ name, status_code, passed, response_time_ms }"}</code>
-                    <span>Execution is manual in this MVP; API Inspector does not send requests to your API.</span>
-                  </div>
-                  <div className="field">
-                    <label htmlFor="inspection-results">Execution results <span>JSON ARRAY</span></label>
-                    <textarea
-                      id="inspection-results"
-                      className="input inspection-json-input"
-                      rows={9}
-                      spellCheck={false}
-                      placeholder={'[\n  {\n    "name": "Get todos successfully",\n    "status_code": 200,\n    "passed": true,\n    "response_time_ms": 125\n  }\n]'}
-                      value={resultsText}
-                      onChange={(event) => setResultsText(event.target.value)}
-                    />
-                  </div>
-                  <div className="inspection-execution-footer">
-                    <span>Up to 200 result objects per analysis.</span>
-                    <button
-                      className="primary inspection-action"
-                      type="button"
-                      onClick={analyzeResults}
-                      disabled={analyzing || generating || !resultsText.trim()}
-                    >
-                      {analyzing ? <><span className="inspection-button-spinner" />Analyzing...</> : <>Analyze results <ArrowRight size={16} /></>}
-                    </button>
-                  </div>
-                </section>
-              )}
-
-              {analysis && (
-                <section className="inspection-analysis">
-                  <div className="inspection-result-heading">
-                    <div>
-                      <small className="eyebrow">ANALYSIS REPORT</small>
-                      <h2>What we found</h2>
-                      <p>{analysis.summary}</p>
-                    </div>
-                    <span className="inspection-total-pill">{findings.length} findings</span>
-                  </div>
-
-                  <div className="inspection-severity-grid">
-                    {(["critical", "high", "medium", "low"] as const).map((severity) => (
-                      <div className={"inspection-severity inspection-severity-" + severity} key={severity}>
-                        <span>{severity}</span>
-                        <strong>{countSeverity(severity)}</strong>
-                      </div>
-                    ))}
-                  </div>
-
-                  {findings.length === 0 ? (
-                    <div className="inspection-clean-state">
-                      <CheckCircle2 size={22} />
-                      <div><strong>No issues detected</strong><p>The supplied results did not show a failed test or an unexpected response.</p></div>
-                    </div>
-                  ) : (
-                    <div className="inspection-finding-list">
-                      {findings.map((finding, index) => (
-                        <article className="inspection-finding" key={finding.title + index}>
-                          <div className="inspection-finding-heading">
-                            <div><span className="inspection-finding-index">{String(index + 1).padStart(2, "0")}</span><h3>{finding.title}</h3></div>
-                            <span className={"inspection-severity-tag inspection-severity-tag-" + finding.severity.toLowerCase()}>
-                              {finding.severity}
-                            </span>
-                          </div>
-                          <p>{finding.description}</p>
-                          {finding.endpoint && <code className="inspection-finding-endpoint">{finding.endpoint}</code>}
-                          <div className="inspection-recommendation">
-                            <strong>Recommended action</strong>
-                            <p>{finding.recommendation}</p>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  )}
-
-                  {analysis.suggestions.length > 0 && (
-                    <div className="inspection-suggestions">
-                      <h3>Next steps</h3>
-                      <ul>{analysis.suggestions.map((suggestion, index) => <li key={index}>{suggestion}</li>)}</ul>
-                    </div>
-                  )}
-                </section>
-              )}
             </>
           )}
         </>

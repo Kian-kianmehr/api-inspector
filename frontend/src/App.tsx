@@ -481,7 +481,519 @@ function Specifications() {
   );
 }
 
-function Inspections(){return <EmptyPage kind="inspections"/>}
+function Inspections() {
+  type TestCase = {
+    name: string;
+    description: string;
+    endpoint: string;
+    method: string;
+    test_type: "positive" | "negative" | string;
+    expected_status_codes: number[];
+    headers: Record<string, unknown>;
+    query_params: Record<string, unknown>;
+    path_params: Record<string, unknown>;
+    request_body: Record<string, unknown> | null;
+  };
+
+  type Finding = {
+    title: string;
+    description: string;
+    severity: "low" | "medium" | "high" | "critical" | string;
+    endpoint: string;
+    recommendation: string;
+  };
+
+  type TestPlan = {
+    summary: string;
+    test_cases: TestCase[];
+  };
+
+  type Analysis = {
+    summary: string;
+    findings: Finding[];
+    suggestions: string[];
+  };
+
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [specifications, setSpecifications] = useState<Specification[]>([]);
+  const [applicationId, setApplicationId] = useState("");
+  const [specificationId, setSpecificationId] = useState("");
+  const [loadingApplications, setLoadingApplications] = useState(true);
+  const [loadingSpecifications, setLoadingSpecifications] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [generationInstructions, setGenerationInstructions] = useState("");
+  const [analysisInstructions, setAnalysisInstructions] = useState("");
+  const [resultsText, setResultsText] = useState("");
+  const [testPlan, setTestPlan] = useState<TestPlan | null>(null);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    request<Application[] | { results: Application[] }>("/applications/")
+      .then((data) => {
+        if (!active) return;
+        const items = Array.isArray(data) ? data : data.results || [];
+        setApplications(items);
+        if (items.length) setApplicationId(String(items[0].id));
+      })
+      .catch((err) => {
+        if (active) setError((err as Error).message);
+      })
+      .finally(() => {
+        if (active) setLoadingApplications(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!applicationId) {
+      setSpecifications([]);
+      setSpecificationId("");
+      return;
+    }
+
+    let active = true;
+    setLoadingSpecifications(true);
+    setSpecifications([]);
+    setSpecificationId("");
+    setTestPlan(null);
+    setAnalysis(null);
+    setResultsText("");
+
+    request<Specification[] | { results: Specification[] }>(
+      "/applications/" + applicationId + "/specifications/"
+    )
+      .then((data) => {
+        if (!active) return;
+        const items = Array.isArray(data) ? data : data.results || [];
+        setSpecifications(items);
+        if (items.length) setSpecificationId(String(items[0].id));
+      })
+      .catch((err) => {
+        if (active) setError((err as Error).message);
+      })
+      .finally(() => {
+        if (active) setLoadingSpecifications(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [applicationId]);
+
+  const selectedSpecification = specifications.find(
+    (item) => String(item.id) === specificationId
+  );
+  const testCases = testPlan?.test_cases || [];
+  const findings = analysis?.findings || [];
+
+  const generateTests = async () => {
+    if (!specificationId) return;
+    setGenerating(true);
+    setError("");
+    setNotice("");
+    setTestPlan(null);
+    setAnalysis(null);
+    setResultsText("");
+
+    try {
+      const result = await request<TestPlan>(
+        "/specifications/" + specificationId + "/ai/generate-tests/",
+        {
+          method: "POST",
+          body: JSON.stringify({ instructions: generationInstructions }),
+        }
+      );
+
+      if (!result || !Array.isArray(result.test_cases)) {
+        throw new Error("The AI service returned an invalid test plan.");
+      }
+
+      setTestPlan(result);
+      setNotice("Generated " + result.test_cases.length + " test cases.");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const analyzeResults = async () => {
+    setError("");
+    setNotice("");
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(resultsText);
+    } catch {
+      setError("The execution results are not valid JSON.");
+      return;
+    }
+
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length === 0 ||
+      parsed.length > 200 ||
+      parsed.some((item) => !item || typeof item !== "object" || Array.isArray(item))
+    ) {
+      setError("Provide a JSON array containing 1 to 200 result objects.");
+      return;
+    }
+
+    setAnalyzing(true);
+    setAnalysis(null);
+
+    try {
+      const result = await request<Analysis>(
+        "/specifications/" + specificationId + "/ai/analyze-results/",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            test_results: parsed,
+            instructions: analysisInstructions,
+          }),
+        }
+      );
+
+      if (
+        !result ||
+        typeof result.summary !== "string" ||
+        !Array.isArray(result.findings) ||
+        !Array.isArray(result.suggestions)
+      ) {
+        throw new Error("The AI service returned an invalid analysis.");
+      }
+
+      setAnalysis(result);
+      setNotice("Analysis completed.");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const countTestType = (type: string) =>
+    testCases.filter((item) => item.test_type === type).length;
+  const countSeverity = (severity: string) =>
+    findings.filter((item) => item.severity.toLowerCase() === severity).length;
+
+  const severityColor: Record<string, string> = {
+    low: "#5b9b77",
+    medium: "#c18b38",
+    high: "#d46a52",
+    critical: "#a83d55",
+  };
+
+  const bar = (label: string, value: number, total: number, color: string) => (
+    <div key={label} style={{ marginBottom: 15 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 7, fontSize: 13 }}>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+      <div style={{ height: 8, borderRadius: 20, overflow: "hidden", background: "var(--border, #e5e7eb)" }}>
+        <div style={{ height: "100%", width: (total ? (value / total) * 100 : 0) + "%", background: color, borderRadius: 20, transition: "width .25s ease" }} />
+      </div>
+    </div>
+  );
+
+  const cardStyle: React.CSSProperties = {
+    border: "1px solid var(--border, #e5e7eb)",
+    borderRadius: 14,
+    padding: 20,
+    background: "var(--panel, #fff)",
+    minWidth: 0,
+  };
+
+  return (
+    <div className="subpage inspections-page">
+      <div className="sub-heading">
+        <div>
+          <small className="eyebrow">AI-POWERED API QUALITY</small>
+          <h1>Inspections</h1>
+          <p>Generate specification-based test plans and analyze execution results.</p>
+        </div>
+      </div>
+
+      {error && <div className="applications-error" role="alert">{error}</div>}
+      {notice && <div className="success-msg" role="status">{notice}</div>}
+
+      {loadingApplications ? (
+        <div className="specifications-state"><span className="spinner" /><p>Loading applications...</p></div>
+      ) : applications.length === 0 ? (
+        <section className="applications-empty">
+          <span className="applications-empty-icon"><ShieldCheck size={25} /></span>
+          <h2>No applications yet</h2>
+          <p>Create an application and add an OpenAPI specification before starting an inspection.</p>
+          <Link className="primary button-link" to="/app/applications">Go to applications <ArrowRight size={16} /></Link>
+        </section>
+      ) : (
+        <>
+          <section className="panel" style={{ padding: 20, marginBottom: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+              <div className="field" style={{ margin: 0 }}>
+                <label htmlFor="inspection-application">Application</label>
+                <select
+                  id="inspection-application"
+                  className="input"
+                  value={applicationId}
+                  onChange={(event) => setApplicationId(event.target.value)}
+                >
+                  {applications.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field" style={{ margin: 0 }}>
+                <label htmlFor="inspection-specification">API specification</label>
+                <select
+                  id="inspection-specification"
+                  className="input"
+                  value={specificationId}
+                  disabled={loadingSpecifications || !specifications.length}
+                  onChange={(event) => {
+                    setSpecificationId(event.target.value);
+                    setTestPlan(null);
+                    setAnalysis(null);
+                    setResultsText("");
+                    setError("");
+                    setNotice("");
+                  }}
+                >
+                  {!specifications.length && <option value="">No specification available</option>}
+                  {specifications.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name} · v{item.api_version}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {loadingSpecifications && <p style={{ margin: "12px 0 0" }} className="specification-hint">Loading specifications...</p>}
+            {selectedSpecification && (
+              <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+                <span className="specification-version">OpenAPI {selectedSpecification.openapi_version}</span>
+                <span style={{ color: "var(--muted, #888)", fontSize: 13 }}>{selectedSpecification.description || "No description"}</span>
+              </div>
+            )}
+          </section>
+
+          {!loadingSpecifications && specifications.length === 0 ? (
+            <section className="applications-empty">
+              <span className="applications-empty-icon"><FileJson2 size={25} /></span>
+              <h2>No API specifications</h2>
+              <p>Add an OpenAPI document to this application to generate an inspection plan.</p>
+              <Link className="primary button-link" to="/app/specifications">Manage specifications <ArrowRight size={16} /></Link>
+            </section>
+          ) : (
+            <>
+              <section style={cardStyle}>
+                <div className="panel-title" style={{ marginBottom: 8 }}>
+                  <Sparkles size={18} />
+                  <h3 style={{ margin: 0 }}>1. Generate test plan</h3>
+                </div>
+                <p style={{ color: "var(--muted, #888)", fontSize: 13, marginTop: 0 }}>
+                  The AI uses your selected OpenAPI document to create validated positive and negative test cases.
+                </p>
+                <div className="field">
+                  <label htmlFor="generation-instructions">Additional instructions <span>OPTIONAL</span></label>
+                  <textarea
+                    id="generation-instructions"
+                    className="input"
+                    rows={3}
+                    maxLength={4000}
+                    placeholder="For example: prioritize the authentication and user-management endpoints."
+                    value={generationInstructions}
+                    onChange={(event) => setGenerationInstructions(event.target.value)}
+                  />
+                </div>
+                <button className="primary" type="button" onClick={generateTests} disabled={!specificationId || generating || analyzing}>
+                  {generating ? "Generating test cases..." : "Generate test cases"} <Sparkles size={16} />
+                </button>
+              </section>
+
+              {testPlan && (
+                <section style={{ ...cardStyle, marginTop: 20 }}>
+                  <div className="section-title" style={{ marginBottom: 18 }}>
+                    <div>
+                      <h2>Generated test plan</h2>
+                      <p>{testPlan.summary}</p>
+                    </div>
+                    <span className="specifications-count">{testCases.length} tests</span>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 22 }}>
+                    <div style={{ ...cardStyle, padding: 15 }}>
+                      <small style={{ color: "var(--muted, #888)" }}>TOTAL TESTS</small>
+                      <div style={{ fontSize: 28, fontWeight: 700, marginTop: 5 }}>{testCases.length}</div>
+                    </div>
+                    <div style={{ ...cardStyle, padding: 15 }}>
+                      <small style={{ color: "var(--muted, #888)" }}>POSITIVE</small>
+                      <div style={{ fontSize: 28, fontWeight: 700, marginTop: 5 }}>{countTestType("positive")}</div>
+                    </div>
+                    <div style={{ ...cardStyle, padding: 15 }}>
+                      <small style={{ color: "var(--muted, #888)" }}>NEGATIVE</small>
+                      <div style={{ fontSize: 28, fontWeight: 700, marginTop: 5 }}>{countTestType("negative")}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ maxWidth: 520, marginBottom: 22 }}>
+                    {bar("Positive tests", countTestType("positive"), testCases.length, "#5b9b77")}
+                    {bar("Negative tests", countTestType("negative"), testCases.length, "#c18b38")}
+                  </div>
+
+                  <div style={{ display: "grid", gap: 12 }}>
+                    {testCases.map((test, index) => (
+                      <article key={index} style={{ border: "1px solid var(--border, #e5e7eb)", borderRadius: 10, padding: 16 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                          <strong>{index + 1}. {test.name}</strong>
+                          <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                            <span className="specification-version">{test.method}</span>
+                            <span className="specification-version">{test.test_type.replace("_", " ")}</span>
+                          </div>
+                        </div>
+                        <p style={{ fontSize: 13, color: "var(--muted, #888)", margin: "9px 0" }}>{test.description}</p>
+                        <code style={{ fontSize: 13, overflowWrap: "anywhere" }}>{test.endpoint}</code>
+                        <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted, #888)" }}>
+                          Expected status: {test.expected_status_codes.length ? test.expected_status_codes.join(", ") : "Not specified"}
+                        </div>
+                        <details style={{ marginTop: 12 }}>
+                          <summary style={{ cursor: "pointer", fontSize: 13 }}>Request details</summary>
+                          <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, padding: 12, borderRadius: 8, background: "var(--surface, #f6f7f9)", marginTop: 9 }}>
+                            {JSON.stringify({
+                              headers: test.headers,
+                              query_params: test.query_params,
+                              path_params: test.path_params,
+                              request_body: test.request_body,
+                            }, null, 2)}
+                          </pre>
+                        </details>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {testPlan && (
+                <section style={{ ...cardStyle, marginTop: 20 }}>
+                  <div className="panel-title" style={{ marginBottom: 8 }}>
+                    <Activity size={18} />
+                    <h3 style={{ margin: 0 }}>2. Add execution results</h3>
+                  </div>
+                  <p style={{ color: "var(--muted, #888)", fontSize: 13, marginTop: 0 }}>
+                    Test execution is not automated in this MVP. Run the generated cases with your preferred client or tool, then paste the results as a JSON array.
+                  </p>
+                  <div className="field">
+                    <label htmlFor="inspection-results">Execution results · JSON</label>
+                    <textarea
+                      id="inspection-results"
+                      className="input specification-document-input"
+                      rows={10}
+                      spellCheck={false}
+                      placeholder={'[\n  {\n    "name": "Get users successfully",\n    "status_code": 200,\n    "passed": true,\n    "response_time_ms": 125\n  }\n]'}
+                      value={resultsText}
+                      onChange={(event) => setResultsText(event.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="analysis-instructions">Analysis instructions <span>OPTIONAL</span></label>
+                    <textarea
+                      id="analysis-instructions"
+                      className="input"
+                      rows={2}
+                      maxLength={4000}
+                      placeholder="Focus on reliability, unexpected status codes, or response behavior."
+                      value={analysisInstructions}
+                      onChange={(event) => setAnalysisInstructions(event.target.value)}
+                    />
+                  </div>
+                  <button className="primary" type="button" onClick={analyzeResults} disabled={analyzing || generating || !resultsText.trim()}>
+                    {analyzing ? "Analyzing results..." : "Analyze execution results"} <ArrowRight size={16} />
+                  </button>
+                </section>
+              )}
+
+              {analysis && (
+                <section style={{ ...cardStyle, marginTop: 20 }}>
+                  <div className="section-title" style={{ marginBottom: 18 }}>
+                    <div>
+                      <h2>Inspection analysis</h2>
+                      <p>{analysis.summary}</p>
+                    </div>
+                    <span className="specifications-count">{findings.length} findings</span>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 22 }}>
+                    {severityTypes.map((severity) => (
+                      <div key={severity} style={{ ...cardStyle, padding: 15 }}>
+                        <small style={{ color: "var(--muted, #888)" }}>{severity.toUpperCase()}</small>
+                        <div style={{ fontSize: 27, fontWeight: 700, marginTop: 5 }}>{countSeverity(severity)}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ maxWidth: 520, marginBottom: 22 }}>
+                    {(["critical", "high", "medium", "low"] as const).map((severity) =>
+                      bar(
+                        severity.charAt(0).toUpperCase() + severity.slice(1),
+                        countSeverity(severity),
+                        findings.length,
+                        severityColor[severity]
+                      )
+                    )}
+                  </div>
+
+                  {findings.length === 0 ? (
+                    <div className="success-msg">No findings were reported for the supplied execution results.</div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 12 }}>
+                      {findings.map((finding, index) => (
+                        <article key={index} style={{ border: "1px solid var(--border, #e5e7eb)", borderRadius: 10, padding: 16 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                            <strong>{finding.title}</strong>
+                            <span style={{
+                              borderRadius: 20,
+                              padding: "4px 9px",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              color: severityColor[finding.severity.toLowerCase()] || "inherit",
+                              background: "var(--surface, #f6f7f9)",
+                            }}>{finding.severity}</span>
+                          </div>
+                          <p style={{ fontSize: 13, lineHeight: 1.65 }}>{finding.description}</p>
+                          {finding.endpoint && <code style={{ fontSize: 12 }}>{finding.endpoint}</code>}
+                          <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "var(--surface, #f6f7f9)" }}>
+                            <strong style={{ fontSize: 12 }}>RECOMMENDATION</strong>
+                            <p style={{ margin: "6px 0 0", fontSize: 13 }}>{finding.recommendation}</p>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+
+                  {analysis.suggestions.length > 0 && (
+                    <div style={{ marginTop: 22 }}>
+                      <h3>Additional suggestions</h3>
+                      <ul style={{ paddingLeft: 20, lineHeight: 1.8, fontSize: 13 }}>
+                        {analysis.suggestions.map((suggestion, index) => <li key={index}>{suggestion}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </section>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 function SettingsPage(){const{user,reload}=useAuth();const[old,setOld]=useState(''),[next,setNext]=useState(''),[confirm,setConfirm]=useState(''),[error,setError]=useState(''),[success,setSuccess]=useState(''),[busy,setBusy]=useState(false);const submit=async(e:FormEvent)=>{e.preventDefault();setError('');setSuccess('');if(next!==confirm){setError('Your new passwords do not match.');return}setBusy(true);try{await request('/accounts/change-password/',{method:'POST',body:JSON.stringify({old_password:old,new_password:next,confirm_new_password:confirm})});setOld('');setNext('');setConfirm('');setSuccess('Password changed successfully.');await reload()}catch(x){setError((x as Error).message)}finally{setBusy(false)}};return <div className="subpage"><div className="sub-heading"><div><small className="eyebrow">YOUR WORKSPACE</small><h1>Settings</h1><p>Manage your account and security preferences.</p></div></div><div className="settings-grid"><section className="panel settings-panel"><h3>Profile information</h3><p>Your account details.</p><div className="detail"><small>Display name</small><b>{user?.display_name||'—'}</b></div><div className="detail"><small>Email address</small><b>{user?.email||'—'}</b><em>{user?.is_active?'Verified account':'Email not verified'}</em></div><div className="detail"><small>Member since</small><b>{user?.created_at?new Date(user.created_at).toLocaleDateString():'—'}</b></div></section><section className="panel settings-panel"><h3>Change password</h3><p>Choose a strong password to keep your account secure.</p><form onSubmit={submit}><Field label="Current password" name="old_password" type="password" required value={old} onChange={e=>setOld(e.target.value)}/><Field label="New password" name="new_password" type="password" required value={next} onChange={e=>setNext(e.target.value)}/><Field label="Confirm new password" name="confirm_new_password" type="password" required value={confirm} onChange={e=>setConfirm(e.target.value)}/><ErrorMsg>{error}</ErrorMsg>{success&&<div className="success-msg">{success}</div>}<button className="primary">Update password <ArrowRight/></button></form></section></div></div>}
 type Application={id:number;name:string;description:string;created_at:string;updated_at:string};
 function Applications(){

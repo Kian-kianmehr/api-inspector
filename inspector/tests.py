@@ -1,6 +1,14 @@
 
+from unittest.mock import Mock, patch
+
+import httpx
 from django.test import SimpleTestCase
 
+from inspector.services.ai_client import (
+    AIClient,
+    AIServiceConnectionError,
+    AIServiceResponseError,
+)
 from inspector.services.openapi_converter import (
     OpenAPIConversionError,
     convert_openapi_to_ai_context,
@@ -155,16 +163,6 @@ class OpenAPIConverterTests(SimpleTestCase):
         ]
 
         self.assertNotIn("OPTIONS", methods)
-
-from unittest.mock import Mock, patch
-
-import httpx
-
-from inspector.services.ai_client import (
-    AIClient,
-    AIServiceConnectionError,
-    AIServiceResponseError,
-)
 
 
 class AIClientTests(SimpleTestCase):

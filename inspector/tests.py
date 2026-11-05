@@ -155,3 +155,134 @@ class OpenAPIConverterTests(SimpleTestCase):
         ]
 
         self.assertNotIn("OPTIONS", methods)
+
+from unittest.mock import Mock, patch
+
+import httpx
+
+from inspector.services.ai_client import (
+    AIClient,
+    AIServiceConnectionError,
+    AIServiceResponseError,
+)
+
+
+class AIClientTests(SimpleTestCase):
+    def setUp(self):
+        self.client = AIClient(
+            base_url="http://127.0.0.1:8000/",
+            timeout=5,
+        )
+        self.api_context = {
+            "name": "Users API",
+            "base_url": "https://example.com",
+            "description": "",
+            "endpoints": [],
+        }
+
+    @patch("inspector.services.ai_client.httpx.post")
+    def test_generate_tests_sends_expected_request(self, mock_post):
+        mock_response = Mock()
+        mock_response.json.return_value = {"test_cases": []}
+        mock_post.return_value = mock_response
+
+        result = self.client.generate_tests(
+            self.api_context,
+            instructions="Generate positive tests",
+        )
+
+        self.assertEqual(result, {"test_cases": []})
+        mock_post.assert_called_once_with(
+            "http://127.0.0.1:8000/v1/test-generation",
+            json={
+                "api_context": self.api_context,
+                "instructions": "Generate positive tests",
+            },
+            timeout=5,
+        )
+
+    @patch("inspector.services.ai_client.httpx.post")
+    def test_analyze_results_sends_expected_request(self, mock_post):
+        mock_response = Mock()
+        mock_response.json.return_value = {"summary": "Analysis"}
+        mock_post.return_value = mock_response
+        test_results = [{"status_code": 500, "success": False}]
+
+        result = self.client.analyze_results(
+            self.api_context,
+            test_results,
+        )
+
+        self.assertEqual(result, {"summary": "Analysis"})
+        mock_post.assert_called_once_with(
+            "http://127.0.0.1:8000/v1/result-analysis",
+            json={
+                "api_context": self.api_context,
+                "test_results": test_results,
+                "instructions": "",
+            },
+            timeout=5,
+        )
+
+    @patch("inspector.services.ai_client.httpx.post")
+    def test_connection_error_is_translated(self, mock_post):
+        mock_post.side_effect = httpx.ConnectError(
+            "Connection refused",
+            request=httpx.Request(
+                "POST",
+                "http://127.0.0.1:8000/v1/test-generation",
+            ),
+        )
+
+        with self.assertRaises(AIServiceConnectionError):
+            self.client.generate_tests(self.api_context)
+
+    @patch("inspector.services.ai_client.httpx.post")
+    def test_timeout_error_is_translated(self, mock_post):
+        mock_post.side_effect = httpx.TimeoutException(
+            "Request timed out"
+        )
+
+        with self.assertRaises(AIServiceConnectionError):
+            self.client.generate_tests(self.api_context)
+
+    @patch("inspector.services.ai_client.httpx.post")
+    def test_http_error_is_translated(self, mock_post):
+        mock_response = Mock()
+        mock_response.status_code = 503
+        mock_response.raise_for_status.side_effect = (
+            httpx.HTTPStatusError(
+                "Service unavailable",
+                request=httpx.Request(
+                    "POST",
+                    "http://127.0.0.1:8000/v1/test-generation",
+                ),
+                response=httpx.Response(503),
+            )
+        )
+        mock_post.return_value = mock_response
+
+        with self.assertRaises(AIServiceResponseError):
+            self.client.generate_tests(self.api_context)
+
+    @patch("inspector.services.ai_client.httpx.post")
+    def test_invalid_json_response_is_rejected(self, mock_post):
+        mock_response = Mock()
+        mock_response.json.side_effect = ValueError("Invalid JSON")
+        mock_post.return_value = mock_response
+
+        with self.assertRaises(AIServiceResponseError):
+            self.client.generate_tests(self.api_context)
+
+    @patch("inspector.services.ai_client.httpx.post")
+    def test_non_object_response_is_rejected(self, mock_post):
+        mock_response = Mock()
+        mock_response.json.return_value = ["unexpected", "list"]
+        mock_post.return_value = mock_response
+
+        with self.assertRaises(AIServiceResponseError):
+            self.client.generate_tests(self.api_context)
+
+    def test_non_positive_timeout_is_rejected(self):
+        with self.assertRaises(ValueError):
+            AIClient(base_url="http://localhost:8000", timeout=0)

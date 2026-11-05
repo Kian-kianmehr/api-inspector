@@ -488,11 +488,11 @@ function Inspections() {
     endpoint: string;
     method: string;
     test_type: "positive" | "negative" | string;
-    expected_status_codes: number[];
-    headers: Record<string, unknown>;
-    query_params: Record<string, unknown>;
-    path_params: Record<string, unknown>;
-    request_body: Record<string, unknown> | null;
+    expected_status_codes?: number[];
+    headers?: Record<string, unknown>;
+    query_params?: Record<string, unknown>;
+    path_params?: Record<string, unknown>;
+    request_body?: Record<string, unknown> | null;
   };
 
   type Finding = {
@@ -503,16 +503,8 @@ function Inspections() {
     recommendation: string;
   };
 
-  type TestPlan = {
-    summary: string;
-    test_cases: TestCase[];
-  };
-
-  type Analysis = {
-    summary: string;
-    findings: Finding[];
-    suggestions: string[];
-  };
+  type TestPlan = { summary: string; test_cases: TestCase[] };
+  type Analysis = { summary: string; findings: Finding[]; suggestions: string[] };
 
   const [applications, setApplications] = useState<Application[]>([]);
   const [specifications, setSpecifications] = useState<Specification[]>([]);
@@ -522,8 +514,6 @@ function Inspections() {
   const [loadingSpecifications, setLoadingSpecifications] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-  const [generationInstructions, setGenerationInstructions] = useState("");
-  const [analysisInstructions, setAnalysisInstructions] = useState("");
   const [resultsText, setResultsText] = useState("");
   const [testPlan, setTestPlan] = useState<TestPlan | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
@@ -532,7 +522,6 @@ function Inspections() {
 
   useEffect(() => {
     let active = true;
-
     request<Application[] | { results: Application[] }>("/applications/")
       .then((data) => {
         if (!active) return;
@@ -546,10 +535,7 @@ function Inspections() {
       .finally(() => {
         if (active) setLoadingApplications(false);
       });
-
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -566,6 +552,8 @@ function Inspections() {
     setTestPlan(null);
     setAnalysis(null);
     setResultsText("");
+    setError("");
+    setNotice("");
 
     request<Specification[] | { results: Specification[] }>(
       "/applications/" + applicationId + "/specifications/"
@@ -583,9 +571,7 @@ function Inspections() {
         if (active) setLoadingSpecifications(false);
       });
 
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [applicationId]);
 
   const selectedSpecification = specifications.find(
@@ -593,10 +579,20 @@ function Inspections() {
   );
   const testCases = testPlan?.test_cases || [];
   const findings = analysis?.findings || [];
-  const severityTypes = ["low", "medium", "high", "critical"];
+  const countType = (type: string) =>
+    testCases.filter((item) => item.test_type === type).length;
+  const countSeverity = (severity: string) =>
+    findings.filter((item) => item.severity.toLowerCase() === severity).length;
+
+  const severityColor: Record<string, string> = {
+    low: "#5eae8a",
+    medium: "#d6a24d",
+    high: "#e17b62",
+    critical: "#e15d79",
+  };
 
   const generateTests = async () => {
-    if (!specificationId) return;
+    if (!specificationId || generating || analyzing) return;
     setGenerating(true);
     setError("");
     setNotice("");
@@ -607,18 +603,13 @@ function Inspections() {
     try {
       const result = await request<TestPlan>(
         "/specifications/" + specificationId + "/ai/generate-tests/",
-        {
-          method: "POST",
-          body: JSON.stringify({ instructions: generationInstructions }),
-        }
+        { method: "POST", body: JSON.stringify({ instructions: "" }) }
       );
-
       if (!result || !Array.isArray(result.test_cases)) {
         throw new Error("The AI service returned an invalid test plan.");
       }
-
       setTestPlan(result);
-      setNotice("Generated " + result.test_cases.length + " test cases.");
+      setNotice("Test plan generated successfully.");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -634,7 +625,7 @@ function Inspections() {
     try {
       parsed = JSON.parse(resultsText);
     } catch {
-      setError("The execution results are not valid JSON.");
+      setError("The execution results are not valid JSON. Check the brackets and commas, then try again.");
       return;
     }
 
@@ -644,21 +635,35 @@ function Inspections() {
       parsed.length > 200 ||
       parsed.some((item) => !item || typeof item !== "object" || Array.isArray(item))
     ) {
-      setError("Provide a JSON array containing 1 to 200 result objects.");
+      setError("Provide a JSON array containing between 1 and 200 result objects.");
       return;
     }
 
+    const enrichedResults = parsed.map((item: Record<string, unknown>) => {
+      const label = String(item.test_name || item.name || item.title || "").trim().toLowerCase();
+      const matchingTest = testCases.find(
+        (test) => test.name.trim().toLowerCase() === label
+      );
+      if (!matchingTest) return item;
+      return {
+        ...item,
+        endpoint: item.endpoint || matchingTest.endpoint,
+        method: item.method || matchingTest.method,
+        expected_status_codes:
+          item.expected_status_codes || matchingTest.expected_status_codes || [],
+      };
+    });
+
     setAnalyzing(true);
     setAnalysis(null);
-
     try {
       const result = await request<Analysis>(
         "/specifications/" + specificationId + "/ai/analyze-results/",
         {
           method: "POST",
           body: JSON.stringify({
-            test_results: parsed,
-            instructions: analysisInstructions,
+            test_results: enrichedResults,
+            instructions: "",
           }),
         }
       );
@@ -673,7 +678,7 @@ function Inspections() {
       }
 
       setAnalysis(result);
-      setNotice("Analysis completed.");
+      setNotice("Execution results analyzed.");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -681,50 +686,31 @@ function Inspections() {
     }
   };
 
-  const countTestType = (type: string) =>
-    testCases.filter((item) => item.test_type === type).length;
-  const countSeverity = (severity: string) =>
-    findings.filter((item) => item.severity.toLowerCase() === severity).length;
-
-  const severityColor: Record<string, string> = {
-    low: "#5b9b77",
-    medium: "#c18b38",
-    high: "#d46a52",
-    critical: "#a83d55",
-  };
-
-  const bar = (label: string, value: number, total: number, color: string) => (
-    <div key={label} style={{ marginBottom: 15 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 7, fontSize: 13 }}>
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
-      <div style={{ height: 8, borderRadius: 20, overflow: "hidden", background: "var(--border, #e5e7eb)" }}>
-        <div style={{ height: "100%", width: (total ? (value / total) * 100 : 0) + "%", background: color, borderRadius: 20, transition: "width .25s ease" }} />
-      </div>
-    </div>
-  );
-
-  const cardStyle = {
-    border: "1px solid var(--border, #e5e7eb)",
-    borderRadius: 14,
-    padding: 20,
-    background: "var(--panel, #fff)",
-    minWidth: 0,
+  const resetInspection = () => {
+    setTestPlan(null);
+    setAnalysis(null);
+    setResultsText("");
+    setError("");
+    setNotice("");
   };
 
   return (
     <div className="subpage inspections-page">
-      <div className="sub-heading">
+      <div className="sub-heading inspections-heading">
         <div>
-          <small className="eyebrow">AI-POWERED API QUALITY</small>
+          <small className="eyebrow">API QUALITY WORKSPACE</small>
           <h1>Inspections</h1>
-          <p>Generate specification-based test plans and analyze execution results.</p>
+          <p>Turn your API contract into test cases, then review what happened when they ran.</p>
         </div>
+        {testPlan && (
+          <button className="inspection-reset" type="button" onClick={resetInspection}>
+            Start new inspection
+          </button>
+        )}
       </div>
 
-      {error && <div className="applications-error" role="alert">{error}</div>}
-      {notice && <div className="success-msg" role="status">{notice}</div>}
+      {error && <div className="applications-error inspection-alert" role="alert">{error}</div>}
+      {notice && <div className="inspection-notice" role="status"><CheckCircle2 size={16} />{notice}</div>}
 
       {loadingApplications ? (
         <div className="specifications-state"><span className="spinner" /><p>Loading applications...</p></div>
@@ -737,9 +723,16 @@ function Inspections() {
         </section>
       ) : (
         <>
-          <section className="panel" style={{ padding: 20, marginBottom: 20 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
-              <div className="field" style={{ margin: 0 }}>
+          <section className="inspection-selector panel">
+            <div className="inspection-panel-heading">
+              <span className="inspection-step">01</span>
+              <div>
+                <h2>Choose an API</h2>
+                <p>Select the application and specification you want to inspect.</p>
+              </div>
+            </div>
+            <div className="inspection-select-grid">
+              <div className="field">
                 <label htmlFor="inspection-application">Application</label>
                 <select
                   id="inspection-application"
@@ -752,7 +745,7 @@ function Inspections() {
                   ))}
                 </select>
               </div>
-              <div className="field" style={{ margin: 0 }}>
+              <div className="field">
                 <label htmlFor="inspection-specification">API specification</label>
                 <select
                   id="inspection-specification"
@@ -770,16 +763,19 @@ function Inspections() {
                 >
                   {!specifications.length && <option value="">No specification available</option>}
                   {specifications.map((item) => (
-                    <option key={item.id} value={item.id}>{item.name} · v{item.api_version}</option>
+                    <option key={item.id} value={item.id}>
+                      {item.name} · v{item.api_version}
+                    </option>
                   ))}
                 </select>
               </div>
             </div>
-            {loadingSpecifications && <p style={{ margin: "12px 0 0" }} className="specification-hint">Loading specifications...</p>}
+            {loadingSpecifications && <p className="inspection-helper">Loading specifications...</p>}
             {selectedSpecification && (
-              <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-                <span className="specification-version">OpenAPI {selectedSpecification.openapi_version}</span>
-                <span style={{ color: "var(--muted, #888)", fontSize: 13 }}>{selectedSpecification.description || "No description"}</span>
+              <div className="inspection-spec-meta">
+                <span>OpenAPI {selectedSpecification.openapi_version}</span>
+                <span>{selectedSpecification.api_version ? "API v" + selectedSpecification.api_version : "API version not set"}</span>
+                <span className="inspection-spec-name">{selectedSpecification.name}</span>
               </div>
             )}
           </section>
@@ -793,86 +789,89 @@ function Inspections() {
             </section>
           ) : (
             <>
-              <section style={cardStyle}>
-                <div className="panel-title" style={{ marginBottom: 8 }}>
-                  <Sparkles size={18} />
-                  <h3 style={{ margin: 0 }}>1. Generate test plan</h3>
+              <section className="inspection-generate panel">
+                <div className="inspection-panel-heading">
+                  <span className="inspection-step">02</span>
+                  <div>
+                    <h2>Generate test cases</h2>
+                    <p>API Inspector reads the selected contract and builds a validated test plan automatically.</p>
+                  </div>
                 </div>
-                <p style={{ color: "var(--muted, #888)", fontSize: 13, marginTop: 0 }}>
-                  The AI uses your selected OpenAPI document to create validated positive and negative test cases.
-                </p>
-                <div className="field">
-                  <label htmlFor="generation-instructions">Additional instructions <span>OPTIONAL</span></label>
-                  <textarea
-                    id="generation-instructions"
-                    className="input"
-                    rows={3}
-                    maxLength={4000}
-                    placeholder="For example: prioritize the authentication and user-management endpoints."
-                    value={generationInstructions}
-                    onChange={(event) => setGenerationInstructions(event.target.value)}
-                  />
+                <div className="inspection-generate-bottom">
+                  <div className="inspection-auto-note">
+                    <Sparkles size={17} />
+                    <span>No prompt writing needed. Test coverage is derived from your OpenAPI document.</span>
+                  </div>
+                  <button
+                    className="primary inspection-action"
+                    type="button"
+                    onClick={generateTests}
+                    disabled={!specificationId || generating || analyzing}
+                  >
+                    {generating ? <><span className="inspection-button-spinner" />Generating...</> : <>Generate test cases <ArrowRight size={16} /></>}
+                  </button>
                 </div>
-                <button className="primary" type="button" onClick={generateTests} disabled={!specificationId || generating || analyzing}>
-                  {generating ? "Generating test cases..." : "Generate test cases"} <Sparkles size={16} />
-                </button>
               </section>
 
               {testPlan && (
-                <section style={{ ...cardStyle, marginTop: 20 }}>
-                  <div className="section-title" style={{ marginBottom: 18 }}>
+                <section className="inspection-results">
+                  <div className="inspection-result-heading">
                     <div>
-                      <h2>Generated test plan</h2>
+                      <small className="eyebrow">TEST PLAN</small>
+                      <h2>Generated test cases</h2>
                       <p>{testPlan.summary}</p>
                     </div>
-                    <span className="specifications-count">{testCases.length} tests</span>
+                    <span className="inspection-total-pill">{testCases.length} tests</span>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 22 }}>
-                    <div style={{ ...cardStyle, padding: 15 }}>
-                      <small style={{ color: "var(--muted, #888)" }}>TOTAL TESTS</small>
-                      <div style={{ fontSize: 28, fontWeight: 700, marginTop: 5 }}>{testCases.length}</div>
+                  <div className="inspection-metrics">
+                    <div className="inspection-metric">
+                      <span>Total tests</span>
+                      <strong>{testCases.length}</strong>
                     </div>
-                    <div style={{ ...cardStyle, padding: 15 }}>
-                      <small style={{ color: "var(--muted, #888)" }}>POSITIVE</small>
-                      <div style={{ fontSize: 28, fontWeight: 700, marginTop: 5 }}>{countTestType("positive")}</div>
+                    <div className="inspection-metric">
+                      <span>Positive</span>
+                      <strong>{countType("positive")}</strong>
                     </div>
-                    <div style={{ ...cardStyle, padding: 15 }}>
-                      <small style={{ color: "var(--muted, #888)" }}>NEGATIVE</small>
-                      <div style={{ fontSize: 28, fontWeight: 700, marginTop: 5 }}>{countTestType("negative")}</div>
+                    <div className="inspection-metric">
+                      <span>Negative</span>
+                      <strong>{countType("negative")}</strong>
                     </div>
                   </div>
 
-                  <div style={{ maxWidth: 520, marginBottom: 22 }}>
-                    {bar("Positive tests", countTestType("positive"), testCases.length, "#5b9b77")}
-                    {bar("Negative tests", countTestType("negative"), testCases.length, "#c18b38")}
-                  </div>
-
-                  <div style={{ display: "grid", gap: 12 }}>
+                  <div className="inspection-case-list">
                     {testCases.map((test, index) => (
-                      <article key={index} style={{ border: "1px solid var(--border, #e5e7eb)", borderRadius: 10, padding: 16 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                          <strong>{index + 1}. {test.name}</strong>
-                          <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
-                            <span className="specification-version">{test.method}</span>
-                            <span className="specification-version">{test.test_type.replace("_", " ")}</span>
+                      <article className="inspection-case" key={test.name + index}>
+                        <div className="inspection-case-top">
+                          <div className="inspection-case-number">{String(index + 1).padStart(2, "0")}</div>
+                          <div className="inspection-case-main">
+                            <h3>{test.name}</h3>
+                            <p>{test.description}</p>
+                            <div className="inspection-case-meta">
+                              <span className="inspection-method">{test.method}</span>
+                              <code>{test.endpoint}</code>
+                            </div>
                           </div>
+                          <span className={"inspection-type inspection-type-" + test.test_type}>
+                            {test.test_type.replace("_", " ")}
+                          </span>
                         </div>
-                        <p style={{ fontSize: 13, color: "var(--muted, #888)", margin: "9px 0" }}>{test.description}</p>
-                        <code style={{ fontSize: 13, overflowWrap: "anywhere" }}>{test.endpoint}</code>
-                        <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted, #888)" }}>
-                          Expected status: {test.expected_status_codes.length ? test.expected_status_codes.join(", ") : "Not specified"}
+                        <div className="inspection-case-footer">
+                          <span>Expected response</span>
+                          {test.expected_status_codes?.length ? (
+                            <div className="inspection-status-list">
+                              {test.expected_status_codes.map((code) => <code key={code}>{code}</code>)}
+                            </div>
+                          ) : <span className="inspection-undocumented">Not defined in specification</span>}
                         </div>
-                        <details style={{ marginTop: 12 }}>
-                          <summary style={{ cursor: "pointer", fontSize: 13 }}>Request details</summary>
-                          <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, padding: 12, borderRadius: 8, background: "var(--surface, #f6f7f9)", marginTop: 9 }}>
-                            {JSON.stringify({
-                              headers: test.headers,
-                              query_params: test.query_params,
-                              path_params: test.path_params,
-                              request_body: test.request_body,
-                            }, null, 2)}
-                          </pre>
+                        <details className="inspection-details">
+                          <summary>View request parameters and body</summary>
+                          <pre>{JSON.stringify({
+                            headers: test.headers || {},
+                            query_params: test.query_params || {},
+                            path_params: test.path_params || {},
+                            request_body: test.request_body ?? null,
+                          }, null, 2)}</pre>
                         </details>
                       </article>
                     ))}
@@ -881,97 +880,85 @@ function Inspections() {
               )}
 
               {testPlan && (
-                <section style={{ ...cardStyle, marginTop: 20 }}>
-                  <div className="panel-title" style={{ marginBottom: 8 }}>
-                    <Activity size={18} />
-                    <h3 style={{ margin: 0 }}>2. Add execution results</h3>
+                <section className="inspection-execution panel">
+                  <div className="inspection-panel-heading">
+                    <span className="inspection-step">03</span>
+                    <div>
+                      <h2>Analyze execution results</h2>
+                      <p>Paste the results from your API client as a JSON array. Match each result's name to a generated test case to carry its endpoint and expected status into the analysis.</p>
+                    </div>
                   </div>
-                  <p style={{ color: "var(--muted, #888)", fontSize: 13, marginTop: 0 }}>
-                    Test execution is not automated in this MVP. Run the generated cases with your preferred client or tool, then paste the results as a JSON array.
-                  </p>
+                  <div className="inspection-format-note">
+                    <strong>Expected format</strong>
+                    <code>{"{ name, status_code, passed, response_time_ms }"}</code>
+                    <span>Execution is manual in this MVP; API Inspector does not send requests to your API.</span>
+                  </div>
                   <div className="field">
-                    <label htmlFor="inspection-results">Execution results · JSON</label>
+                    <label htmlFor="inspection-results">Execution results <span>JSON ARRAY</span></label>
                     <textarea
                       id="inspection-results"
-                      className="input specification-document-input"
-                      rows={10}
+                      className="input inspection-json-input"
+                      rows={9}
                       spellCheck={false}
-                      placeholder={'[\n  {\n    "name": "Get users successfully",\n    "status_code": 200,\n    "passed": true,\n    "response_time_ms": 125\n  }\n]'}
+                      placeholder={'[\n  {\n    "name": "Get todos successfully",\n    "status_code": 200,\n    "passed": true,\n    "response_time_ms": 125\n  }\n]'}
                       value={resultsText}
                       onChange={(event) => setResultsText(event.target.value)}
                     />
                   </div>
-                  <div className="field">
-                    <label htmlFor="analysis-instructions">Analysis instructions <span>OPTIONAL</span></label>
-                    <textarea
-                      id="analysis-instructions"
-                      className="input"
-                      rows={2}
-                      maxLength={4000}
-                      placeholder="Focus on reliability, unexpected status codes, or response behavior."
-                      value={analysisInstructions}
-                      onChange={(event) => setAnalysisInstructions(event.target.value)}
-                    />
+                  <div className="inspection-execution-footer">
+                    <span>Up to 200 result objects per analysis.</span>
+                    <button
+                      className="primary inspection-action"
+                      type="button"
+                      onClick={analyzeResults}
+                      disabled={analyzing || generating || !resultsText.trim()}
+                    >
+                      {analyzing ? <><span className="inspection-button-spinner" />Analyzing...</> : <>Analyze results <ArrowRight size={16} /></>}
+                    </button>
                   </div>
-                  <button className="primary" type="button" onClick={analyzeResults} disabled={analyzing || generating || !resultsText.trim()}>
-                    {analyzing ? "Analyzing results..." : "Analyze execution results"} <ArrowRight size={16} />
-                  </button>
                 </section>
               )}
 
               {analysis && (
-                <section style={{ ...cardStyle, marginTop: 20 }}>
-                  <div className="section-title" style={{ marginBottom: 18 }}>
+                <section className="inspection-analysis">
+                  <div className="inspection-result-heading">
                     <div>
-                      <h2>Inspection analysis</h2>
+                      <small className="eyebrow">ANALYSIS REPORT</small>
+                      <h2>What we found</h2>
                       <p>{analysis.summary}</p>
                     </div>
-                    <span className="specifications-count">{findings.length} findings</span>
+                    <span className="inspection-total-pill">{findings.length} findings</span>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 22 }}>
-                    {severityTypes.map((severity) => (
-                      <div key={severity} style={{ ...cardStyle, padding: 15 }}>
-                        <small style={{ color: "var(--muted, #888)" }}>{severity.toUpperCase()}</small>
-                        <div style={{ fontSize: 27, fontWeight: 700, marginTop: 5 }}>{countSeverity(severity)}</div>
+                  <div className="inspection-severity-grid">
+                    {(["critical", "high", "medium", "low"] as const).map((severity) => (
+                      <div className={"inspection-severity inspection-severity-" + severity} key={severity}>
+                        <span>{severity}</span>
+                        <strong>{countSeverity(severity)}</strong>
                       </div>
                     ))}
                   </div>
 
-                  <div style={{ maxWidth: 520, marginBottom: 22 }}>
-                    {(["critical", "high", "medium", "low"] as const).map((severity) =>
-                      bar(
-                        severity.charAt(0).toUpperCase() + severity.slice(1),
-                        countSeverity(severity),
-                        findings.length,
-                        severityColor[severity]
-                      )
-                    )}
-                  </div>
-
                   {findings.length === 0 ? (
-                    <div className="success-msg">No findings were reported for the supplied execution results.</div>
+                    <div className="inspection-clean-state">
+                      <CheckCircle2 size={22} />
+                      <div><strong>No issues detected</strong><p>The supplied results did not show a failed test or an unexpected response.</p></div>
+                    </div>
                   ) : (
-                    <div style={{ display: "grid", gap: 12 }}>
+                    <div className="inspection-finding-list">
                       {findings.map((finding, index) => (
-                        <article key={index} style={{ border: "1px solid var(--border, #e5e7eb)", borderRadius: 10, padding: 16 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-                            <strong>{finding.title}</strong>
-                            <span style={{
-                              borderRadius: 20,
-                              padding: "4px 9px",
-                              fontSize: 11,
-                              fontWeight: 700,
-                              textTransform: "uppercase",
-                              color: severityColor[finding.severity.toLowerCase()] || "inherit",
-                              background: "var(--surface, #f6f7f9)",
-                            }}>{finding.severity}</span>
+                        <article className="inspection-finding" key={finding.title + index}>
+                          <div className="inspection-finding-heading">
+                            <div><span className="inspection-finding-index">{String(index + 1).padStart(2, "0")}</span><h3>{finding.title}</h3></div>
+                            <span className={"inspection-severity-tag inspection-severity-tag-" + finding.severity.toLowerCase()}>
+                              {finding.severity}
+                            </span>
                           </div>
-                          <p style={{ fontSize: 13, lineHeight: 1.65 }}>{finding.description}</p>
-                          {finding.endpoint && <code style={{ fontSize: 12 }}>{finding.endpoint}</code>}
-                          <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "var(--surface, #f6f7f9)" }}>
-                            <strong style={{ fontSize: 12 }}>RECOMMENDATION</strong>
-                            <p style={{ margin: "6px 0 0", fontSize: 13 }}>{finding.recommendation}</p>
+                          <p>{finding.description}</p>
+                          {finding.endpoint && <code className="inspection-finding-endpoint">{finding.endpoint}</code>}
+                          <div className="inspection-recommendation">
+                            <strong>Recommended action</strong>
+                            <p>{finding.recommendation}</p>
                           </div>
                         </article>
                       ))}
@@ -979,11 +966,9 @@ function Inspections() {
                   )}
 
                   {analysis.suggestions.length > 0 && (
-                    <div style={{ marginTop: 22 }}>
-                      <h3>Additional suggestions</h3>
-                      <ul style={{ paddingLeft: 20, lineHeight: 1.8, fontSize: 13 }}>
-                        {analysis.suggestions.map((suggestion, index) => <li key={index}>{suggestion}</li>)}
-                      </ul>
+                    <div className="inspection-suggestions">
+                      <h3>Next steps</h3>
+                      <ul>{analysis.suggestions.map((suggestion, index) => <li key={index}>{suggestion}</li>)}</ul>
                     </div>
                   )}
                 </section>

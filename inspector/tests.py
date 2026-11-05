@@ -153,6 +153,57 @@ class OpenAPIConverterTests(SimpleTestCase):
             200,
         )
 
+    def test_rejects_responses_nested_inside_request_body(self):
+        document = {
+            "openapi": "3.0.3",
+            "info": {"title": "Malformed API", "version": "1.0.0"},
+            "paths": {
+                "/todos": {
+                    "post": {
+                        "requestBody": {
+                            "required": True,
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "title": {"type": "string"}
+                                        },
+                                    }
+                                }
+                            },
+                            "responses": {
+                                "201": {"description": "Created"}
+                            },
+                        }
+                    }
+                }
+            },
+        }
+
+        with self.assertRaisesRegex(
+            OpenAPIConversionError,
+            "must be defined at the operation level",
+        ):
+            convert_openapi_to_ai_context(document)
+
+    def test_rejects_operations_without_documented_responses(self):
+        document = {
+            "openapi": "3.0.3",
+            "info": {"title": "Incomplete API", "version": "1.0.0"},
+            "paths": {
+                "/todos": {
+                    "get": {"summary": "List todos"}
+                }
+            },
+        }
+
+        with self.assertRaisesRegex(
+            OpenAPIConversionError,
+            "must define a non-empty responses object",
+        ):
+            convert_openapi_to_ai_context(document)
+
     def test_rejects_unsupported_openapi_version(self):
         document = {
             "openapi": "2.0",

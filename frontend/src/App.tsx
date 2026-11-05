@@ -578,18 +578,8 @@ function Inspections() {
     (item) => String(item.id) === specificationId
   );
   const testCases = testPlan?.test_cases || [];
-  const findings = analysis?.findings || [];
   const countType = (type: string) =>
     testCases.filter((item) => item.test_type === type).length;
-  const countSeverity = (severity: string) =>
-    findings.filter((item) => item.severity.toLowerCase() === severity).length;
-
-  const severityColor: Record<string, string> = {
-    low: "#5eae8a",
-    medium: "#d6a24d",
-    high: "#e17b62",
-    critical: "#e15d79",
-  };
 
   const generateTests = async () => {
     if (!specificationId || generating || analyzingTest !== null) return;
@@ -911,6 +901,11 @@ function Inspections() {
                             onChange={(event) => {
                               const key = String(index) + ":" + test.name;
                               setResponseTexts((current) => ({ ...current, [key]: event.target.value }));
+                              setCaseAnalyses((current) => {
+                                const next = { ...current };
+                                delete next[key];
+                                return next;
+                              });
                             }}
                           />
                           <div className="inspection-case-response-footer">

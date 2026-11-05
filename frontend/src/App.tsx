@@ -593,6 +593,7 @@ function Inspections() {
   );
   const testCases = testPlan?.test_cases || [];
   const findings = analysis?.findings || [];
+  const severityTypes = ["Low", "Medium", "High", "Critical"];
 
   const generateTests = async () => {
     if (!specificationId) return;
@@ -704,7 +705,7 @@ function Inspections() {
     </div>
   );
 
-  const cardStyle: React.CSSProperties = {
+  const cardStyle = {
     border: "1px solid var(--border, #e5e7eb)",
     borderRadius: 14,
     padding: 20,

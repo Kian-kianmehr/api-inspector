@@ -370,6 +370,22 @@ def convert_openapi_to_ai_context(
                 or ""
             )
 
+            operation_responses = operation.get("responses")
+            if not isinstance(operation_responses, dict) or not operation_responses:
+                if (
+                    isinstance(operation.get("requestBody"), dict)
+                    and "responses" in operation["requestBody"]
+                ):
+                    raise OpenAPIConversionError(
+                        f"Responses for {method} {path} must be defined "
+                        "at the operation level, alongside requestBody."
+                    )
+
+                raise OpenAPIConversionError(
+                    f"Operation {method} {path} must define a non-empty "
+                    "responses object."
+                )
+
             endpoints.append({
                 "path": path,
                 "method": method,
@@ -383,7 +399,7 @@ def convert_openapi_to_ai_context(
                     specification,
                 ),
                 "responses": _extract_responses(
-                    operation.get("responses"),
+                    operation_responses,
                     specification,
                 ),
             })
